@@ -580,7 +580,7 @@ function updateVisualMode( mode ) {
 		params.displayBrushes = true;
 		brush1.visible = params.displayBrushes;
 		brush2.visible = params.displayBrushes;
-		
+
 		showHideDecalMesh( true );
 	}
 	needsUpdate = true;
@@ -1057,3 +1057,4 @@ function animate() {
 }
 
 
+//https://github.com/manthrax/monkeypaint/tree/main
