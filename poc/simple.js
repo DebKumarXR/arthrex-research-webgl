@@ -42,6 +42,7 @@ import {
 	HOLLOW_INTERSECTION,
 	HOLLOW_SUBTRACTION,
 } from '..';
+import { func } from 'three/examples/jsm/nodes/Nodes.js';
 
 window.logTriangleDefinitions = logTriangleDefinitions;
 
@@ -71,8 +72,8 @@ const params = {
 	displayBrush1BVH: false,
 	displayBrush2BVH: false,
 
-	minScale: 10,
-	maxScale: 20,
+	minScale: 0.01,
+	maxScale: 1.0,
 	rotate: true,
 	positions: 'stand',
 	visMode: 'normal',
@@ -349,28 +350,28 @@ async function init() {
 	// gui.add( params, 'displayControls' );
 	// gui.add( params, 'shadows' );
 	// gui.add( params, 'useGroups' ).onChange( () => needsUpdate = true );
-	// gui.add( params, 'vertexColors' ).onChange( v => {
+	gui.add( params, 'vertexColors' ).onChange( v => {
 
-	// 	brush1.material.vertexColors = v;
-	// 	brush1.material.needsUpdate = true;
+		brush1.material.vertexColors = v;
+		brush1.material.needsUpdate = true;
 
-	// 	brush2.material.vertexColors = v;
-	// 	brush2.material.needsUpdate = true;
+		brush2.material.vertexColors = v;
+		brush2.material.needsUpdate = true;
 
-	// 	materialMap.forEach( m => {
+		materialMap.forEach( m => {
 
-	// 		m.vertexColors = v;
-	// 		m.needsUpdate = true;
+			m.vertexColors = v;
+			m.needsUpdate = true;
 
-	// 	} );
+		} );
 
-	// 	csgEvaluator.attributes = v ?
-	// 		[ 'color', 'position', 'normal' ] :
-	// 		[ 'position', 'normal' ];
+		csgEvaluator.attributes = v ?
+			[ 'color', 'position', 'normal' ] :
+			[ 'position', 'normal' ];
 
-	// 	needsUpdate = true;
+		needsUpdate = true;
 
-	// } );
+	} );
 	// gui.add( params, 'gridTexture' ).onChange( v => {
 
 	// 	materialMap.forEach( ( m1, m2 ) => {
@@ -549,6 +550,8 @@ function updateVisualMode( mode ) {
 		params.displayBrushes = false;
 		brush1.visible = params.displayBrushes;
 		brush2.visible = params.displayBrushes;
+
+		showHideDecalMesh( false );
 	}
 	else if ( mode === 'transparent' ) {
 		params.operation = SUBTRACTION;
@@ -557,6 +560,8 @@ function updateVisualMode( mode ) {
 		params.displayBrushes = true;
 		brush1.visible = params.displayBrushes;
 		brush2.visible = params.displayBrushes;
+
+		showHideDecalMesh( false );
 	}
 	else if ( mode === 'intersection' ) {
 		params.operation = SUBTRACTION;
@@ -565,11 +570,18 @@ function updateVisualMode( mode ) {
 		params.displayBrushes = false;
 		brush1.visible = params.displayBrushes;
 		brush2.visible = params.displayBrushes;
-	} else if ( mode === 'impingement' ) {
-		// update brush1 and brush2 with hip and femur meshes
-		params.displayBrushes = false;
+
+		showHideDecalMesh( false );
+	} else if ( mode === 'impingement' ) {		
+		
+		params.operation = SUBTRACTION;
+		
+		params.useGroups = false;
+		params.displayBrushes = true;
 		brush1.visible = params.displayBrushes;
 		brush2.visible = params.displayBrushes;
+		
+		showHideDecalMesh( true );
 	}
 	needsUpdate = true;
 }
@@ -823,7 +835,7 @@ function initDecal() {
 
 			checkIntersection( event.clientX, event.clientY );
 
-			if ( intersection.intersects ) addDecal();
+			if ( intersection.intersects ) addDecalAtPosition(intersection.point);
 
 		}
 
@@ -846,12 +858,13 @@ function initDecal() {
 function checkIntersection( x, y ) {
 
 	if ( decalMesh === undefined ) return;
-
+	
 	mouse.x = ( x / window.innerWidth ) * 2 - 1;
 	mouse.y = - ( y / window.innerHeight ) * 2 + 1;
 
 	raycaster.setFromCamera( mouse, camera );
 	raycaster.intersectObject( decalMesh, false, intersects );
+	
 
 	if ( intersects.length > 0 ) {
 
@@ -885,6 +898,44 @@ function checkIntersection( x, y ) {
 	}
 
 }
+function checkIntersectionAtPosition( position ) {
+	if ( decalMesh === undefined ) return;
+
+	
+	raycaster.setFromCamera( position, camera );
+	raycaster.intersectObject( decalMesh, false, intersects );
+	
+
+	if ( intersects.length > 0 ) {
+
+		const p = intersects[ 0 ].point;
+		mouseHelper.position.copy( p );
+		intersection.point.copy( p );
+
+		const normalMatrix = new THREE.Matrix3().getNormalMatrix( decalMesh.matrixWorld );
+
+		const n = intersects[ 0 ].face.normal.clone();
+		n.applyNormalMatrix( normalMatrix );
+		n.multiplyScalar( 10 );
+		n.add( intersects[ 0 ].point );
+
+		intersection.normal.copy( intersects[ 0 ].face.normal );
+		mouseHelper.lookAt( n );
+
+		const positions = line.geometry.attributes.position;
+		positions.setXYZ( 0, p.x, p.y, p.z );
+		positions.setXYZ( 1, n.x, n.y, n.z );
+		positions.needsUpdate = true;
+
+		intersection.intersects = true;
+
+	} else {
+
+		intersection.intersects = false;
+
+	}
+
+}
 // load glb source mesh
 async function loadSourceMesh() {
 	
@@ -895,6 +946,7 @@ async function loadSourceMesh() {
 		decalMesh = gltf.scene.children[ 0 ];
 		decalMesh.material = new THREE.MeshPhongMaterial( {
 			specular: 0x111111,
+			vertexColors: true,
 			color: 0xaaaaaa,			
 			shininess: 25
 		} );
@@ -902,14 +954,34 @@ async function loadSourceMesh() {
 		scene.add( decalMesh );
 		decalMesh.scale.multiplyScalar( 10 );
 
-		// scle down to fit the hip mesh
-		decalMesh.scale.set( 0.5, 0.5, 0.5 );
+		showHideDecalMesh( false );
 
-		//change position to the hip mesh
-		decalMesh.position.set( 0, 10, 0 );
+		// change vertex colors to white
+		const position = decalMesh.geometry.attributes.position;
+		const colors = new Float32Array( position.count * 3 );
+		for ( let i = 0; i < position.count; i++ ) {
+			colors[ i * 3 + 0 ] = 1;
+			colors[ i * 3 + 1 ] = 1;
+			colors[ i * 3 + 2 ] = 1;
+		}
+		decalMesh.geometry.setAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
+		decalMesh.geometry.computeVertexNormals();
 
 	} );
 
+}
+
+function showHideDecalMesh( show ) {
+	if ( decalMesh === undefined ) return;
+	
+	if ( show ) {
+		decalMesh.scale.set( 0.5, 0.5, 0.5 );
+		decalMesh.position.set( 0, 0, 0 );
+	}
+	else {
+		decalMesh.scale.set( 0.0001, 0.0001, 0.0001 );
+		decalMesh.position.set( 1000, 1000, 1000 ); // move it far away
+	}
 }
 
 // function for adding decal on the hip mesh
@@ -924,9 +996,12 @@ function addDecal() {
 	size.set( scale, scale, scale );
 
 	const material = decalMaterial.clone();
-	material.color.setHex( Math.random() * 0xffffff );
+	//material.color.setHex( Math.random() * 0xffffff );
+	material.color.setHex( 0xff0000 );
 
-	const m = new THREE.Mesh( new DecalGeometry( decalMesh, position, orientation, size ), material );
+	const orientationMatrix = new THREE.Matrix4();
+
+	const m = new THREE.Mesh( new DecalGeometry( decalMesh, position, orientationMatrix, size ), material );
 	m.renderOrder = decals.length; // give decals a fixed render order
 
 	decals.push( m );
@@ -945,6 +1020,14 @@ function addDecal() {
 
 	// decals.push( m );
 	// testMesh.attach( m );
+}
+
+function addDecalAtPosition( position ) {
+
+	// if no decal mesh, return
+	if ( decalMesh === undefined ) return;
+	checkIntersectionAtPosition( position );
+	addDecal();
 }
 
 // remove decal from the hip mesh
