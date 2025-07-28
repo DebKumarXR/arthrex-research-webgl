@@ -49,7 +49,7 @@ const params = {
 
 	brush1Shape: 'box',
 	brush1Complexity: 1,
-	brush1Color: '#ffffff',
+	brush1Color: '#d1d1d1ff',
 
 	brush2Shape: 'sphere',
 	brush2Complexity: 1,
@@ -74,7 +74,10 @@ const params = {
 	minScale: 10,
 	maxScale: 20,
 	rotate: true,
-	clear: function () {
+	positions: 'stand',
+	visMode: 'normal',
+	reset: function () {
+		resetScene();
 		removeDecal();
 	}
 
@@ -94,6 +97,13 @@ let femurGLTF;
 let hipMesh;
 let femurMesh;
 const materialMap = new Map();
+
+// controllers
+const _controllers = {
+  startZCtrl: null,
+  startYCtrl: null,
+  startXCtrl: null,
+};
 
 // decals
 let decalMesh;
@@ -155,7 +165,7 @@ async function init() {
 	scene = new Scene();
 
 	// lights
-	light = new DirectionalLight( 0xffffff, 3.5 );
+	light = new DirectionalLight( 0xffffff, 2.5 );
 	light.position.set( -20, 2, 3 );
 	scene.add( light, light.target );
 	scene.add( new AmbientLight( 0xb0bec5, 0.35 ) );
@@ -173,7 +183,7 @@ async function init() {
 
 	// camera setup
 	camera = new PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 50 );
-	camera.position.set( -10, 0, 4 );
+	camera.position.set( -10.5, 0, -2.83 );
 	camera.far = 100;
 	camera.updateProjectionMatrix();
 
@@ -219,6 +229,8 @@ async function init() {
 	brush1.material.polygonOffsetUnits = 0.2;
 	brush1.material.side = DoubleSide;
 	brush1.material.premultipliedAlpha = true;
+	brush1.material.roughness = 0.25;
+	brush1.material.color.set( 0xb5b5b5 );
 
 	brush2.material.opacity = 0.15;
 	brush2.material.transparent = true;
@@ -300,7 +312,8 @@ async function init() {
 	// load hip geometry
 	hipGLTF = await new GLTFLoader()
 		.setMeshoptDecoder( MeshoptDecoder )
-		.loadAsync( 'https://debkumarxr.github.io/webgl-test-three/poc/mesh/hip_MQ.glb' );
+		//.loadAsync( 'https://debkumarxr.github.io/webgl-test-three/poc/mesh/hip_MQ.glb' );
+		.loadAsync( '/mesh/hip.glb' );
 
 	hipMesh = hipGLTF.scene.children[ 0 ].geometry;
 	hipMesh.computeVertexNormals();
@@ -309,7 +322,8 @@ async function init() {
 	//load femur geometry
 	femurGLTF = await new GLTFLoader()
 		.setMeshoptDecoder( MeshoptDecoder )
-		.loadAsync( 'https://debkumarxr.github.io/webgl-test-three/poc/mesh/femur_MQ.glb' );
+		//.loadAsync( 'https://debkumarxr.github.io/webgl-test-three/poc/mesh/femur_MQ.glb' );
+		.loadAsync( '/mesh/femur.glb' );
 
 	femurMesh = femurGLTF.scene.children[ 0 ].geometry;
 	femurMesh.computeVertexNormals();
@@ -331,106 +345,106 @@ async function init() {
 		}
 
 	} );
-	gui.add( params, 'displayBrushes' );
-	gui.add( params, 'displayControls' );
-	gui.add( params, 'shadows' );
-	gui.add( params, 'useGroups' ).onChange( () => needsUpdate = true );
-	gui.add( params, 'vertexColors' ).onChange( v => {
+	// gui.add( params, 'displayBrushes' );
+	// gui.add( params, 'displayControls' );
+	// gui.add( params, 'shadows' );
+	// gui.add( params, 'useGroups' ).onChange( () => needsUpdate = true );
+	// gui.add( params, 'vertexColors' ).onChange( v => {
 
-		brush1.material.vertexColors = v;
-		brush1.material.needsUpdate = true;
+	// 	brush1.material.vertexColors = v;
+	// 	brush1.material.needsUpdate = true;
 
-		brush2.material.vertexColors = v;
-		brush2.material.needsUpdate = true;
+	// 	brush2.material.vertexColors = v;
+	// 	brush2.material.needsUpdate = true;
 
-		materialMap.forEach( m => {
+	// 	materialMap.forEach( m => {
 
-			m.vertexColors = v;
-			m.needsUpdate = true;
+	// 		m.vertexColors = v;
+	// 		m.needsUpdate = true;
 
-		} );
+	// 	} );
 
-		csgEvaluator.attributes = v ?
-			[ 'color', 'position', 'normal' ] :
-			[ 'position', 'normal' ];
+	// 	csgEvaluator.attributes = v ?
+	// 		[ 'color', 'position', 'normal' ] :
+	// 		[ 'position', 'normal' ];
 
-		needsUpdate = true;
+	// 	needsUpdate = true;
 
-	} );
-	gui.add( params, 'gridTexture' ).onChange( v => {
+	// } );
+	// gui.add( params, 'gridTexture' ).onChange( v => {
 
-		materialMap.forEach( ( m1, m2 ) => {
+	// 	materialMap.forEach( ( m1, m2 ) => {
 
-			m1.enableGrid = v;
-			m2.enableGrid = v;
+	// 		m1.enableGrid = v;
+	// 		m2.enableGrid = v;
 
-		} );
+	// 	} );
 
-	} );
-	gui.add( params, 'flatShading' ).onChange( v => {
+	// } );
+	// gui.add( params, 'flatShading' ).onChange( v => {
 
-		brush1.material.flatShading = v;
-		brush1.material.needsUpdate = true;
+	// 	brush1.material.flatShading = v;
+	// 	brush1.material.needsUpdate = true;
 
-		brush2.material.flatShading = v;
-		brush2.material.needsUpdate = true;
+	// 	brush2.material.flatShading = v;
+	// 	brush2.material.needsUpdate = true;
 
-		materialMap.forEach( m => {
+	// 	materialMap.forEach( m => {
 
-			m.flatShading = v;
-			m.needsUpdate = true;
+	// 		m.flatShading = v;
+	// 		m.needsUpdate = true;
 
-		} );
+	// 	} );
 
-	} );
+	// } );
 
-	const brush1Folder = gui.addFolder( 'brush 1' );
-	brush1Folder.add( params, 'brush1Shape', [ 'sphere', 'box', 'cylinder', 'torus', 'torus knot', 'mesh' ] ).name( 'shape' ).onChange( v => {
+	// const brush1Folder = gui.addFolder( 'brush 1' );
+	// brush1Folder.add( params, 'brush1Shape', [ 'sphere', 'box', 'cylinder', 'torus', 'torus knot', 'mesh' ] ).name( 'shape' ).onChange( v => {
 
-		updateBrush( brush1, v, params.brush1Complexity, hipMesh );
-		bvhHelper1.update();
+	// 	updateBrush( brush1, v, params.brush1Complexity, hipMesh );
+	// 	bvhHelper1.update();
 
-	} );
-	brush1Folder.add( params, 'brush1Complexity', 0, 2 ).name( 'complexity' ).onChange( v => {
+	// } );
+	// brush1Folder.add( params, 'brush1Complexity', 0, 2 ).name( 'complexity' ).onChange( v => {
 
-		updateBrush( brush1, params.brush1Shape, v, hipMesh);
-		bvhHelper1.update();
+	// 	updateBrush( brush1, params.brush1Shape, v, hipMesh);
+	// 	bvhHelper1.update();
 
-	} );
-	brush1Folder.addColor( params, 'brush1Color' ).onChange( v => {
+	// } );
+	// brush1Folder.addColor( params, 'brush1Color' ).onChange( v => {
 
-		brush1.material.color.set( v );
-		materialMap.get( brush1.material ).color.set( v );
+	// 	brush1.material.color.set( v );
+	// 	materialMap.get( brush1.material ).color.set( v );
 
-	} );
+	// } );
 
-	const brush2Folder = gui.addFolder( 'brush 2' );
-	brush2Folder.add( params, 'brush2Shape', [ 'sphere', 'box', 'cylinder', 'torus', 'torus knot', 'mesh' ] ).name( 'shape' ).onChange( v => {
+	// const brush2Folder = gui.addFolder( 'brush 2' );
+	// brush2Folder.add( params, 'brush2Shape', [ 'sphere', 'box', 'cylinder', 'torus', 'torus knot', 'mesh' ] ).name( 'shape' ).onChange( v => {
 
-		updateBrush( brush2, v, params.brush2Complexity, femurMesh );
-		bvhHelper2.update();
+	// 	updateBrush( brush2, v, params.brush2Complexity, femurMesh );
+	// 	bvhHelper2.update();
 
-	} );
-	brush2Folder.add( params, 'brush2Complexity', 0, 2 ).name( 'complexity' ).onChange( v => {
+	// } );
+	// brush2Folder.add( params, 'brush2Complexity', 0, 2 ).name( 'complexity' ).onChange( v => {
 
-		updateBrush( brush2, params.brush2Shape, v, femurMesh );
-		bvhHelper2.update();
+	// 	updateBrush( brush2, params.brush2Shape, v, femurMesh );
+	// 	bvhHelper2.update();
 
-	} );
-	brush2Folder.addColor( params, 'brush2Color' ).onChange( v => {
+	// } );
+	// brush2Folder.addColor( params, 'brush2Color' ).onChange( v => {
 
-		brush2.material.color.set( v );
-		materialMap.get( brush2.material ).color.set( v );
+	// 	brush2.material.color.set( v );
+	// 	materialMap.get( brush2.material ).color.set( v );
 
-	} );
+	// } );
 
-	const debugFolder = gui.addFolder( 'debug' );
-	debugFolder.add( params, 'enableDebugTelemetry' ).onChange( () => needsUpdate = true );
-	debugFolder.add( params, 'displayIntersectionEdges' );
-	debugFolder.add( params, 'displayTriangleIntersections' );
-	debugFolder.add( params, 'wireframe' );
-	debugFolder.add( params, 'displayBrush1BVH' );
-	debugFolder.add( params, 'displayBrush2BVH' );
+	// const debugFolder = gui.addFolder( 'debug' );
+	// debugFolder.add( params, 'enableDebugTelemetry' ).onChange( () => needsUpdate = true );
+	// debugFolder.add( params, 'displayIntersectionEdges' );
+	// debugFolder.add( params, 'displayTriangleIntersections' );
+	// debugFolder.add( params, 'wireframe' );
+	// debugFolder.add( params, 'displayBrush1BVH' );
+	// debugFolder.add( params, 'displayBrush2BVH' );
 
 	// default rotate
 	transformControls.setMode( 'rotate' );
@@ -449,31 +463,119 @@ async function init() {
 		switch ( e.code ) {
 
 			case 'KeyW':
-				transformControls.setMode( 'translate' );
+				//transformControls.setMode( 'translate' );
 				break;
 			case 'KeyE':
 				transformControls.setMode( 'rotate' );
 				break;
 			case 'KeyR':
-				transformControls.setMode( 'scale' );
+				//transformControls.setMode( 'scale' );
 				break;
 
 		}
 
 	} );
 
+	//add a button for position modes
+	gui.add(params, 'positions', ['stand', 'sit', '120squat', '90split']).name('Positions').onChange( (v) => {
+		updatePositions( v );	
+	});
+
+	// add brush2 rotation controls
+	const rotFolder = gui.addFolder( 'rotation' );
+	_controllers.startXCtrl = rotFolder.add( brush2.rotation, 'x', 0, Math.PI*2 ).name( 'X' ).onChange( () => {
+		needsUpdate = true;
+	} );
+	_controllers.startYCtrl = rotFolder.add( brush2.rotation, 'y', 0, Math.PI*2 ).name( 'Y' ).onChange( () => {
+		needsUpdate = true;
+	} );
+	_controllers.startZCtrl = rotFolder.add( brush2.rotation, 'z', 0, Math.PI*2 ).name( 'Z' ).onChange( () => {
+		needsUpdate = true;
+	} );
+	rotFolder.open();
+
+
 	gui.add( params, 'minScale', 1, 30 );
 	gui.add( params, 'maxScale', 1, 30 );
 	gui.add( params, 'rotate' );
-	gui.add( params, 'clear' );
+	gui.add( params, 'reset' );
+
+	//add a button for collision/visual mode
+	gui.add(params, 'visMode', ['normal', 'transparent', 'intersection', 'impingement']).name('Mode').onChange( (v) => {
+		updateVisualMode( v );	
+	});
+
+	updateVisualMode( 'normal' );
 	initDecal();
+
+
+	if(hipMesh !== undefined) {
+		// update brush1 with hip mesh
+		updateBrush( brush1, 'mesh', params.brush1Complexity, hipMesh );	
+		bvhHelper1.update();
+	}
+	if(femurMesh !== undefined) {
+		// update brush2 with femur mesh
+		updateBrush( brush2, 'mesh', params.brush2Complexity, femurMesh );
+		bvhHelper2.update();
+	}
 
 	render();
 
 }
 
-function updateBrush( brush, type, complexity, mesh ) {
+function updatePositions( mode ) {
+	if ( mode === 'stand' ) {
+		brush2.rotation.set( 0, 0, 0 );
+	}
+	else if ( mode === 'sit' ) {
+		brush2.rotation.set( 0, 90, 0 );
+	}
+	else if ( mode === '120squat' ) {
+		brush2.rotation.set( 0, 120, 0 );
+	}
+	else if ( mode === '90split' ) {
+		brush2.rotation.set( 0, Math.PI / 2, 0 );
+	}
+	Object.keys(_controllers).forEach((key) => _controllers[key].updateDisplay());
+	needsUpdate = true;	
+}
 
+function updateVisualMode( mode ) {
+	if ( mode === 'normal' ) {
+		params.operation = ADDITION;
+		params.useGroups = false;
+
+		params.displayBrushes = false;
+		brush1.visible = params.displayBrushes;
+		brush2.visible = params.displayBrushes;
+	}
+	else if ( mode === 'transparent' ) {
+		params.operation = SUBTRACTION;
+		
+		params.useGroups = true;
+		params.displayBrushes = true;
+		brush1.visible = params.displayBrushes;
+		brush2.visible = params.displayBrushes;
+	}
+	else if ( mode === 'intersection' ) {
+		params.operation = SUBTRACTION;
+		
+		params.useGroups = true;
+		params.displayBrushes = false;
+		brush1.visible = params.displayBrushes;
+		brush2.visible = params.displayBrushes;
+	} else if ( mode === 'impingement' ) {
+		// update brush1 and brush2 with hip and femur meshes
+		params.displayBrushes = false;
+		brush1.visible = params.displayBrushes;
+		brush2.visible = params.displayBrushes;
+	}
+	needsUpdate = true;
+}
+
+function updateBrush( brush, type, complexity, mesh ) {
+	
 	brush.geometry.dispose();
 	switch ( type ) {
 
@@ -540,6 +642,24 @@ function updateBrush( brush, type, complexity, mesh ) {
 	brush.prepareGeometry();
 	needsUpdate = true;
 
+}
+
+function resetScene() {	
+
+	// reset camera
+	camera.position.set( -10.5, 0, -2.83 );
+	camera.updateProjectionMatrix();
+	controls.reset();
+	
+
+	// reset brushes positions and rotations
+	brush1.rotation.set( 0, 0, 0 );
+	brush1.position.set( 0, 0, 0 );
+	brush2.rotation.set( 0, 0, 0 );
+	brush2.position.set( 0, 0, 0 );	
+
+	Object.keys(_controllers).forEach((key) => _controllers[key].updateDisplay());
+	needsUpdate = true;	
 }
 
 function render() {
@@ -847,6 +967,8 @@ function animate() {
 
 	renderer.render( scene, camera );
 
+	//console log camera position
+	//console.log( 'camera position:', camera.position );
 //	stats.update();
 
 }
