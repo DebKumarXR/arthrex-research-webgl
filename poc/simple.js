@@ -67,13 +67,13 @@ const params = {
 	useGroups: true,
 
 	enableDebugTelemetry: true,
-	displayIntersectionEdges: false,
-	displayTriangleIntersections: false,
+	displayIntersectionEdges: true,
+	displayTriangleIntersections: true,
 	displayBrush1BVH: false,
 	displayBrush2BVH: false,
 
-	minScale: 0.01,
-	maxScale: 1.0,
+	minScale: 1.5,
+	maxScale: 2.0,
 	rotate: true,
 	positions: 'stand',
 	visMode: 'normal',
@@ -104,12 +104,13 @@ const _controllers = {
   startZCtrl: null,
   startYCtrl: null,
   startXCtrl: null,
+  pelvicTiltCtrl: null,
 };
 
 // decals
 let decalMesh;
 let raycaster;
-let line;
+// let line;
 
 const intersection = {
 	intersects: false,
@@ -143,6 +144,9 @@ let mouseHelper;
 const position = new THREE.Vector3();
 const orientation = new THREE.Euler();
 const size = new THREE.Vector3( 10, 10, 10 );
+let lastDecalUpdateTime;
+let decalNeedUpdate = false;
+let decalBoneRotation = new THREE.Vector3(0, 0, 0);
 
 init();
 
@@ -215,8 +219,8 @@ async function init() {
 	brush1 = new Brush( new BoxGeometry(), new GridMaterial() );
 	brush2 = new Brush( new BoxGeometry(), new GridMaterial() );
 	//brush2.position.set( - 0.75, 0.75, 0 );
-	brush2.scale.setScalar( 0.5 );
-	brush1.scale.setScalar( 0.5 );
+	//brush2.scale.setScalar( 0.5 );
+	//brush1.scale.setScalar( 0.5 );
 
 	updateBrush( brush1, params.brush1Shape, params.brush1Complexity );
 	updateBrush( brush2, params.brush2Shape, params.brush2Complexity );
@@ -313,7 +317,6 @@ async function init() {
 	// load hip geometry
 	hipGLTF = await new GLTFLoader()
 		.setMeshoptDecoder( MeshoptDecoder )
-		//.loadAsync( 'https://debkumarxr.github.io/webgl-test-three/poc/mesh/hip_MQ.glb' );
 		.loadAsync( '/mesh/hip.glb' );
 
 	hipMesh = hipGLTF.scene.children[ 0 ].geometry;
@@ -323,7 +326,6 @@ async function init() {
 	//load femur geometry
 	femurGLTF = await new GLTFLoader()
 		.setMeshoptDecoder( MeshoptDecoder )
-		//.loadAsync( 'https://debkumarxr.github.io/webgl-test-three/poc/mesh/femur_MQ.glb' );
 		.loadAsync( '/mesh/femur.glb' );
 
 	femurMesh = femurGLTF.scene.children[ 0 ].geometry;
@@ -346,10 +348,7 @@ async function init() {
 		}
 
 	} );
-	// gui.add( params, 'displayBrushes' );
-	// gui.add( params, 'displayControls' );
-	// gui.add( params, 'shadows' );
-	// gui.add( params, 'useGroups' ).onChange( () => needsUpdate = true );
+	
 	gui.add( params, 'vertexColors' ).onChange( v => {
 
 		brush1.material.vertexColors = v;
@@ -371,81 +370,7 @@ async function init() {
 
 		needsUpdate = true;
 
-	} );
-	// gui.add( params, 'gridTexture' ).onChange( v => {
-
-	// 	materialMap.forEach( ( m1, m2 ) => {
-
-	// 		m1.enableGrid = v;
-	// 		m2.enableGrid = v;
-
-	// 	} );
-
-	// } );
-	// gui.add( params, 'flatShading' ).onChange( v => {
-
-	// 	brush1.material.flatShading = v;
-	// 	brush1.material.needsUpdate = true;
-
-	// 	brush2.material.flatShading = v;
-	// 	brush2.material.needsUpdate = true;
-
-	// 	materialMap.forEach( m => {
-
-	// 		m.flatShading = v;
-	// 		m.needsUpdate = true;
-
-	// 	} );
-
-	// } );
-
-	// const brush1Folder = gui.addFolder( 'brush 1' );
-	// brush1Folder.add( params, 'brush1Shape', [ 'sphere', 'box', 'cylinder', 'torus', 'torus knot', 'mesh' ] ).name( 'shape' ).onChange( v => {
-
-	// 	updateBrush( brush1, v, params.brush1Complexity, hipMesh );
-	// 	bvhHelper1.update();
-
-	// } );
-	// brush1Folder.add( params, 'brush1Complexity', 0, 2 ).name( 'complexity' ).onChange( v => {
-
-	// 	updateBrush( brush1, params.brush1Shape, v, hipMesh);
-	// 	bvhHelper1.update();
-
-	// } );
-	// brush1Folder.addColor( params, 'brush1Color' ).onChange( v => {
-
-	// 	brush1.material.color.set( v );
-	// 	materialMap.get( brush1.material ).color.set( v );
-
-	// } );
-
-	// const brush2Folder = gui.addFolder( 'brush 2' );
-	// brush2Folder.add( params, 'brush2Shape', [ 'sphere', 'box', 'cylinder', 'torus', 'torus knot', 'mesh' ] ).name( 'shape' ).onChange( v => {
-
-	// 	updateBrush( brush2, v, params.brush2Complexity, femurMesh );
-	// 	bvhHelper2.update();
-
-	// } );
-	// brush2Folder.add( params, 'brush2Complexity', 0, 2 ).name( 'complexity' ).onChange( v => {
-
-	// 	updateBrush( brush2, params.brush2Shape, v, femurMesh );
-	// 	bvhHelper2.update();
-
-	// } );
-	// brush2Folder.addColor( params, 'brush2Color' ).onChange( v => {
-
-	// 	brush2.material.color.set( v );
-	// 	materialMap.get( brush2.material ).color.set( v );
-
-	// } );
-
-	// const debugFolder = gui.addFolder( 'debug' );
-	// debugFolder.add( params, 'enableDebugTelemetry' ).onChange( () => needsUpdate = true );
-	// debugFolder.add( params, 'displayIntersectionEdges' );
-	// debugFolder.add( params, 'displayTriangleIntersections' );
-	// debugFolder.add( params, 'wireframe' );
-	// debugFolder.add( params, 'displayBrush1BVH' );
-	// debugFolder.add( params, 'displayBrush2BVH' );
+	} );	
 
 	// default rotate
 	transformControls.setMode( 'rotate' );
@@ -461,18 +386,10 @@ async function init() {
 
 	window.addEventListener( 'keydown', function ( e ) {
 
-		switch ( e.code ) {
-
-			case 'KeyW':
-				//transformControls.setMode( 'translate' );
-				break;
+		switch ( e.code ) {		
 			case 'KeyE':
 				transformControls.setMode( 'rotate' );
 				break;
-			case 'KeyR':
-				//transformControls.setMode( 'scale' );
-				break;
-
 		}
 
 	} );
@@ -482,15 +399,20 @@ async function init() {
 		updatePositions( v );	
 	});
 
+	const pelvicFolder = gui.addFolder( 'Pelvic' );
+	_controllers.pelvicTiltCtrl = pelvicFolder.add( brush2.rotation, 'x', -Math.PI / 2, Math.PI / 2 ).name( 'Pelvic Tilt' ).onChange( () => {
+		needsUpdate = true;
+	} );
+
 	// add brush2 rotation controls
-	const rotFolder = gui.addFolder( 'rotation' );
-	_controllers.startXCtrl = rotFolder.add( brush2.rotation, 'x', 0, Math.PI*2 ).name( 'X' ).onChange( () => {
+	const rotFolder = gui.addFolder( 'Rotation' );
+	_controllers.startXCtrl = rotFolder.add( brush2.rotation, 'x', -Math.PI, Math.PI ).name( 'Flexion/Extension' ).onChange( () => {
 		needsUpdate = true;
 	} );
-	_controllers.startYCtrl = rotFolder.add( brush2.rotation, 'y', 0, Math.PI*2 ).name( 'Y' ).onChange( () => {
+	_controllers.startYCtrl = rotFolder.add( brush2.rotation, 'y', -Math.PI, Math.PI ).name( 'Abduction/Adduction' ).onChange( () => {
 		needsUpdate = true;
 	} );
-	_controllers.startZCtrl = rotFolder.add( brush2.rotation, 'z', 0, Math.PI*2 ).name( 'Z' ).onChange( () => {
+	_controllers.startZCtrl = rotFolder.add( brush2.rotation, 'z', -Math.PI, Math.PI ).name( 'Internal/External' ).onChange( () => {
 		needsUpdate = true;
 	} );
 	rotFolder.open();
@@ -574,10 +496,10 @@ function updateVisualMode( mode ) {
 		showHideDecalMesh( false );
 	} else if ( mode === 'impingement' ) {		
 		
-		params.operation = SUBTRACTION;
-		
+		params.operation = ADDITION;
 		params.useGroups = false;
-		params.displayBrushes = true;
+
+		params.displayBrushes = false;
 		brush1.visible = params.displayBrushes;
 		brush2.visible = params.displayBrushes;
 
@@ -678,22 +600,19 @@ function render() {
 
 	requestAnimationFrame( render );
 
-	//brush2.scale.x = Math.max( brush2.scale.x, 0.01 );
-	//brush2.scale.y = Math.max( brush2.scale.y, 0.01 );
-	//brush2.scale.z = Math.max( brush2.scale.z, 0.01 );
-
 	const enableDebugTelemetry = params.enableDebugTelemetry;
 	if ( needsUpdate ) {
 
 		needsUpdate = false;
+		decalNeedUpdate = true;
 
 		brush1.updateMatrixWorld();
 		brush2.updateMatrixWorld();
 
 		const startTime = window.performance.now();
 		csgEvaluator.debug.enabled = enableDebugTelemetry;
-		csgEvaluator.useGroups = params.useGroups;
-		csgEvaluator.evaluate( brush1, brush2, params.operation, resultObject );
+		csgEvaluator.useGroups = params.useGroups;		
+		csgEvaluator.evaluate( brush1, brush2, params.operation, resultObject );		
 
 		if ( params.useGroups ) {
 
@@ -718,64 +637,26 @@ function render() {
 			] );
 
 		}
-		// // get vertex positions of hip mesh
-		// if ( testMesh === undefined ) return;
-		// const positionsHip = testMesh.geometry.attributes.position;
-		// //convert object to world space
-		// positionsHip.applyMatrix4( testMesh.matrixWorld );
-		// //print vertex positions
-		// console.log( 'hip mesh vertex positions:', positionsHip.array );
-
-		// for ( let i = 0; i < 5; i++ ) {
-		// 	const position = new THREE.Vector3().fromBufferAttribute( positionsHip, i );
-		// 	// add decal at position
-		// 	addDecal( position );
-		// }
-
-		// const positions = resultObject.geometry.attributes.position;
-		// //convert object to world space
-		// positions.applyMatrix4( resultObject.matrixWorld );
-		// //print vertex positions
-		// console.log( 'result object vertex positions:', positions.array );
-
-		// // add decals for 5 vertices positions
-		// for ( let i = 0; i < 5; i++ ) {
-		// 	const position = new THREE.Vector3().fromBufferAttribute( positions, i );
-		// 	// add decal at position
-		// 	addDecal( position );
-		// }
-
 	}
 
-	// window.CSG_DEBUG = csgEvaluator.debug;
-	// if ( window.TRI !== undefined ) {
-
-	// 	const v = Object.keys( csgEvaluator.debug.triangleIntersectsA.data )[ window.TRI ];
-	// 	const _matrix = new Matrix4();
-	// 	_matrix
-	// 		.copy( brush2.matrixWorld )
-	// 		.invert()
-	// 		.multiply( brush1.matrixWorld );
-
-
-	// 	// This is the space that clipping happens in
-	// 	const tris = [
-	// 		...csgEvaluator.debug.triangleIntersectsA.getTrianglesAsArray( v ),
-	// 		...csgEvaluator.debug.triangleIntersectsA.getIntersectionsAsArray( v ),
-	// 	].map( t => {
-
-	// 		t = t.clone();
-	// 		t.a.applyMatrix4( _matrix );
-	// 		t.b.applyMatrix4( _matrix );
-	// 		t.c.applyMatrix4( _matrix );
-	// 		return t;
-
-	// 	} );
-
-	// 	trisHelper.setTriangles( [ ...tris ] );
-	// 	logTriangleDefinitions( ...tris );
-
-	// }
+	// decal update for impingement, we are going to update only when bone is not moving
+	if(params.visMode === 'impingement') 
+	{
+		const timeNow = Date.now();
+		const rotVector = new THREE.Vector3(0, 0, 0);
+		rotVector.copy( brush2.rotation );
+		if(decalBoneRotation.distanceTo( rotVector ) > 0.01) {
+			lastDecalUpdateTime = timeNow;
+			decalBoneRotation.copy( rotVector );
+			decalNeedUpdate = false;	
+			removeDecal();
+		}
+		if ( (timeNow - lastDecalUpdateTime) > 1000 && !decalNeedUpdate ) {
+			decalNeedUpdate = true;
+			removeDecal();
+			updateDecalsOnEdge();
+		}
+	}	
 
 	wireframeResult.visible = params.wireframe;
 	brush1.visible = params.displayBrushes;
@@ -791,9 +672,42 @@ function render() {
 
 	bvhHelper1.visible = params.displayBrush1BVH;
 	bvhHelper2.visible = params.displayBrush2BVH;
+}
 
-	//renderer.render( scene, camera );
+//vertext colors to show impingement
+function updateDecalsOnEdge() {
+	if ( decalMesh === undefined ) return;
 
+	const positions = edgesHelper.geometry.attributes.position;
+	
+	// add decals for all vertices positions
+	let lastPosition = new THREE.Vector3();
+	let pos = new THREE.Vector3();
+	for ( let i = 0; i < positions.count; i++ ) {
+		pos.fromBufferAttribute( positions, i );
+
+		const distance = pos.distanceTo(lastPosition);
+		// if the position is too close to the last position, skip it
+		if ( distance > 0.5 || i === 0 ) 
+		{			
+			lastPosition.copy( pos );
+			addDecalAtPosition( pos );			
+		}
+		
+	}
+	// log total decals
+	console.log( 'Total decals:', decals.length );
+
+	const position = decalMesh.geometry.attributes.position;
+	const colors = new Float32Array( position.count * 3 );
+	for ( let i = 0; i < position.count; i++ ) {
+		colors[ i * 3 + 0 ] = 1;
+		colors[ i * 3 + 1 ] = 1;
+		colors[ i * 3 + 2 ] = 1;
+	}
+	decalMesh.geometry.setAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
+	decalMesh.geometry.computeVertexNormals();
+	
 }
 
 // init decal
@@ -802,8 +716,10 @@ function initDecal() {
 	const geometry = new THREE.BufferGeometry();
 	geometry.setFromPoints( [ new THREE.Vector3(), new THREE.Vector3() ] );
 
-	line = new THREE.Line( geometry, new THREE.LineBasicMaterial() );
-	scene.add( line );
+	lastDecalUpdateTime = Date.now();
+
+	//line = new THREE.Line( geometry, new THREE.LineBasicMaterial() );
+	//scene.add( line );
 
 	loadSourceMesh();
 
@@ -829,80 +745,84 @@ function initDecal() {
 
 	} );
 
-	window.addEventListener( 'pointerup', function ( event ) {
+	// window.addEventListener( 'pointerup', function ( event ) {
 
-		if ( moved === false ) {
+	// 	if ( moved === false ) {
 
-			checkIntersection( event.clientX, event.clientY );
+	// 		checkIntersection( event.clientX, event.clientY );
 
-			if ( intersection.intersects ) addDecalAtPosition(intersection.point);
+	// 		if ( intersection.intersects ) addDecalAtPosition(intersection.point);
 
-		}
+	// 	}
 
-	} );
+	// } );
 
-	window.addEventListener( 'pointermove', onPointerMove );
+	// window.addEventListener( 'pointermove', onPointerMove );
 
-	function onPointerMove( event ) {
+	// function onPointerMove( event ) {
 
-		if ( event.isPrimary ) {
+	// 	if ( event.isPrimary ) {
 
-			checkIntersection( event.clientX, event.clientY );
+	// 		checkIntersection( event.clientX, event.clientY );
 
-		}
+	// 	}
 
-	}
-
-}
-
-function checkIntersection( x, y ) {
-
-	if ( decalMesh === undefined ) return;
-	
-	mouse.x = ( x / window.innerWidth ) * 2 - 1;
-	mouse.y = - ( y / window.innerHeight ) * 2 + 1;
-
-	raycaster.setFromCamera( mouse, camera );
-	raycaster.intersectObject( decalMesh, false, intersects );
-	
-
-	if ( intersects.length > 0 ) {
-
-		const p = intersects[ 0 ].point;
-		mouseHelper.position.copy( p );
-		intersection.point.copy( p );
-
-		const normalMatrix = new THREE.Matrix3().getNormalMatrix( decalMesh.matrixWorld );
-
-		const n = intersects[ 0 ].face.normal.clone();
-		n.applyNormalMatrix( normalMatrix );
-		n.multiplyScalar( 10 );
-		n.add( intersects[ 0 ].point );
-
-		intersection.normal.copy( intersects[ 0 ].face.normal );
-		mouseHelper.lookAt( n );
-
-		const positions = line.geometry.attributes.position;
-		positions.setXYZ( 0, p.x, p.y, p.z );
-		positions.setXYZ( 1, n.x, n.y, n.z );
-		positions.needsUpdate = true;
-
-		intersection.intersects = true;
-
-		intersects.length = 0;
-
-	} else {
-
-		intersection.intersects = false;
-
-	}
+	// }
 
 }
+
+// function checkIntersection( x, y ) {
+
+// 	if ( decalMesh === undefined ) return;
+	
+// 	mouse.x = ( x / window.innerWidth ) * 2 - 1;
+// 	mouse.y = - ( y / window.innerHeight ) * 2 + 1;
+
+// 	raycaster.setFromCamera( mouse, camera );
+// 	raycaster.intersectObject( decalMesh, false, intersects );
+	
+
+// 	if ( intersects.length > 0 ) {
+
+// 		const p = intersects[ 0 ].point;
+// 		mouseHelper.position.copy( p );
+// 		intersection.point.copy( p );
+
+// 		const normalMatrix = new THREE.Matrix3().getNormalMatrix( decalMesh.matrixWorld );
+
+// 		const n = intersects[ 0 ].face.normal.clone();
+// 		n.applyNormalMatrix( normalMatrix );
+// 		n.multiplyScalar( 10 );
+// 		n.add( intersects[ 0 ].point );
+
+// 		intersection.normal.copy( intersects[ 0 ].face.normal );
+// 		mouseHelper.lookAt( n );
+
+// 		// const positions = line.geometry.attributes.position;
+// 		// positions.setXYZ( 0, p.x, p.y, p.z );
+// 		// positions.setXYZ( 1, n.x, n.y, n.z );
+// 		// positions.needsUpdate = true;
+
+// 		intersection.intersects = true;
+
+// 		intersects.length = 0;
+
+// 	} else {
+
+// 		intersection.intersects = false;
+
+// 	}
+
+// }
 function checkIntersectionAtPosition( position ) {
 	if ( decalMesh === undefined ) return;
 
-	
-	raycaster.setFromCamera( position, camera );
+	const pointer = new THREE.Vector2();
+	const vec = position.project( camera );
+	pointer.x = vec.x;
+    pointer.y = vec.y;
+
+	raycaster.setFromCamera( pointer, camera );
 	raycaster.intersectObject( decalMesh, false, intersects );
 	
 
@@ -922,10 +842,10 @@ function checkIntersectionAtPosition( position ) {
 		intersection.normal.copy( intersects[ 0 ].face.normal );
 		mouseHelper.lookAt( n );
 
-		const positions = line.geometry.attributes.position;
-		positions.setXYZ( 0, p.x, p.y, p.z );
-		positions.setXYZ( 1, n.x, n.y, n.z );
-		positions.needsUpdate = true;
+		// const positions = line.geometry.attributes.position;
+		// positions.setXYZ( 0, p.x, p.y, p.z );
+		// positions.setXYZ( 1, n.x, n.y, n.z );
+		// positions.needsUpdate = true;
 
 		intersection.intersects = true;
 
@@ -975,7 +895,7 @@ function showHideDecalMesh( show ) {
 	if ( decalMesh === undefined ) return;
 	
 	if ( show ) {
-		decalMesh.scale.set( 0.5, 0.5, 0.5 );
+		decalMesh.scale.set( 1, 1, 1 );
 		decalMesh.position.set( 0, 0, 0 );
 	}
 	else {
@@ -990,9 +910,20 @@ function addDecal() {
 	position.copy( intersection.point );
 	orientation.copy( mouseHelper.rotation );
 
+	// check if this point is too close to existing decals
+	for ( let i = 0; i < decals.length; i++ ) {
+		const d = decals[ i ];
+		const dPos = d.position;
+		const distance = position.distanceTo( dPos );
+		if ( distance < 0.2 ) {
+			console.log( 'skipping decal, too close to existing decal:', distance );
+			return;
+		}
+	}
+
 	if ( params.rotate ) orientation.z = Math.random() * 2 * Math.PI;
 
-	const scale = params.minScale + Math.random() * ( params.maxScale - params.minScale );
+	const scale = params.minScale;// + Math.random() * ( params.maxScale - params.minScale );
 	size.set( scale, scale, scale );
 
 	const material = decalMaterial.clone();
@@ -1006,20 +937,7 @@ function addDecal() {
 
 	decals.push( m );
 
-	decalMesh.attach( m );
-
-	// if(testMesh === undefined) return;
-
-	// const orientation = new THREE.Euler( Math.PI / 2, 0, 0 ); // rotate decal to face up
-	// const size = new THREE.Vector3( 5, 5, 5 ); // size of the decal
-
-	// const material = decalMaterial.clone();
-	// material.color.setHex( Math.random() * 0xffffff );
-	// const m = new THREE.Mesh( new DecalGeometry( testMesh, position, orientation, size ), material );
-	// m.renderOrder = decals.length; // give decals a fixed render order
-
-	// decals.push( m );
-	// testMesh.attach( m );
+	decalMesh.attach( m );	
 }
 
 function addDecalAtPosition( position ) {
@@ -1032,6 +950,7 @@ function addDecalAtPosition( position ) {
 
 // remove decal from the hip mesh
 function removeDecal() {
+	console.log( 'removing decals:', decals.length );
 	decals.forEach( function ( d ) {
 		decalMesh.remove( d );
 	} );
@@ -1056,5 +975,5 @@ function animate() {
 
 }
 
-
+//mesh painting brush example
 //https://github.com/manthrax/monkeypaint/tree/main
