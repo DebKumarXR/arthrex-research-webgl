@@ -5,6 +5,7 @@ import {
 	DirectionalLight,
 	AmbientLight,
 	PerspectiveCamera,
+	OrthographicCamera,
 	BoxGeometry,
 	DoubleSide,
 	FrontSide,
@@ -20,6 +21,7 @@ import {
 	BufferAttribute,
 } from 'three';
 import * as THREE from 'three';
+import  Stats from 'three/examples/jsm/libs/stats.module.js';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -27,6 +29,9 @@ import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { MeshBVHVisualizer } from 'three-mesh-bvh';
+import SpriteText from "three-spritetext";
+
+
 import {
 	Brush,
 	Evaluator,
@@ -85,6 +90,7 @@ const params = {
 
 };
 
+let stats;
 let renderer, camera, scene, gui, outputContainer;
 let controls, transformControls;
 let brush1, brush2;
@@ -161,6 +167,10 @@ const spriteMaterial = new THREE.SpriteMaterial( {
 	 fog: true
 } );
 
+//Hud
+let hudcamera, hudScene;
+let impingementLabel;
+
 
 init();
 
@@ -178,10 +188,15 @@ async function init() {
 	renderer.setClearColor( bgColor, 1 );
 	renderer.shadowMap.enabled = true;
 	renderer.shadowMap.type = PCFSoftShadowMap;
-	document.body.appendChild( renderer.domElement );
+	document.body.appendChild( renderer.domElement );	
+
+	// stats
+	stats = new Stats();
+	document.body.appendChild( stats.dom );
 	
 	// scene setup
 	scene = new Scene();
+	scene.background = new THREE.Color( '#151515' );
 
 	// lights
 	light = new DirectionalLight( 0xffffff, 2.5 );
@@ -206,6 +221,21 @@ async function init() {
 	camera.far = 100;
 	camera.updateProjectionMatrix();
 
+	// Hud Camera
+	const frustumSize = 5;
+	const aspect = window.innerWidth / window.innerHeight;
+	hudcamera = new OrthographicCamera(
+		(frustumSize * aspect) / -2,
+		(frustumSize * aspect) / 2,
+		frustumSize / 2,
+		frustumSize / -2,
+		0.1,
+		100
+	);
+
+	hudScene = new Scene();
+	hudcamera.position.z = 5;
+
 	// controls
 	controls = new OrbitControls( camera, renderer.domElement );
 
@@ -222,10 +252,9 @@ async function init() {
 
 	} );
 	scene.add( transformControls );
-
-
 	
-	// bunny mesh has no UVs so skip that attribute
+	
+	// CSG evaluator
 	csgEvaluator = new Evaluator();
 	csgEvaluator.attributes = [ 'position', 'normal' ];
 
@@ -361,30 +390,8 @@ async function init() {
 
 		}
 
-	} );
+	} );	
 	
-	// gui.add( params, 'vertexColors' ).onChange( v => {
-
-	// 	brush1.material.vertexColors = v;
-	// 	brush1.material.needsUpdate = true;
-
-	// 	brush2.material.vertexColors = v;
-	// 	brush2.material.needsUpdate = true;
-
-	// 	materialMap.forEach( m => {
-
-	// 		m.vertexColors = v;
-	// 		m.needsUpdate = true;
-
-	// 	} );
-
-	// 	csgEvaluator.attributes = v ?
-	// 		[ 'color', 'position', 'normal' ] :
-	// 		[ 'position', 'normal' ];
-
-	// 	needsUpdate = true;
-
-	// } );	
 
 	// default rotate
 	transformControls.setMode( 'rotate' );
@@ -445,10 +452,25 @@ async function init() {
 
 	updateVisualMode( 'impingement' );
 
+	
     visModeFolder.add(params, 'spriteRadius', 0.1, 1.0).name('Impingement Radius');
-	visModeFolder.add( params, 'reset' ).name('Reset');
+	visModeFolder.add(params, 'reset' ).name('Reset');
 	visModeFolder.open();
 
+	// HUD Controls
+	const planeGeometry = new BoxGeometry( 2, 2, 0.01 );
+	const material = new MeshBasicMaterial({ color: '#000000'});	
+	const hudmesh = new Mesh(planeGeometry, material);
+	hudmesh.position.x = hudcamera.left + 1.1;
+	hudmesh.position.y = hudcamera.bottom + 1;
+	hudScene.add(hudmesh);
+
+	//label for impingement	
+	impingementLabel = new SpriteText( 'Impingement Area', 0.1 );
+	impingementLabel.position.set(0, 0.9, 0.01);
+	hudmesh.add(impingementLabel);
+
+	// init decals
 	initDecal();
 
 
@@ -692,7 +714,7 @@ function render() {
 	trisHelper.visible = enableDebugTelemetry && params.displayTriangleIntersections;
 
 	bvhHelper1.visible = params.displayBrush1BVH;
-	bvhHelper2.visible = params.displayBrush2BVH;
+	bvhHelper2.visible = params.displayBrush2BVH;	
 }
 
 // add sprites on edge mesh
@@ -730,6 +752,23 @@ function addSpritesOnEdge() {
 		}		
 		
 	}
+
+	// convert positions to Vector3 array
+	const positionsArray = [];
+	for ( let i = 0; i < positions.count; i++ ) {
+		const pos = new THREE.Vector3();
+		pos.fromBufferAttribute( positions, i );
+		positionsArray.push( pos );
+	}
+
+	//create a bounding box from positions
+	const boundingBox = new THREE.Box3().setFromPoints( positionsArray );
+
+	// find area of the edge mesh
+	const edgeArea = boundingBox.getSize( new THREE.Vector3() ).length();
+
+	//update label text
+	impingementLabel.text = `Impingement Area: ${edgeArea.toFixed(2)} cm²`;
 
 	// log total sprites
 	console.log( 'Total sprites added:', spriteGroup.children.length );
@@ -1044,12 +1083,26 @@ function onWindowResize() {
 
 	renderer.setSize( window.innerWidth, window.innerHeight );
 
+	const aspect = window.innerWidth / window.innerHeight;
+
+	hudcamera.left = (-frustumSize * aspect) / 2;
+	hudcamera.right = (frustumSize * aspect) / 2;
+	hudcamera.top = frustumSize / 2;
+	hudcamera.bottom = -frustumSize / 2;
+
+	hudmesh.position.x = hudcamera.left + 0.5;
+	hudmesh.position.y = hudcamera.top - 0.5;
+
+	hudcamera.updateProjectionMatrix();
+
 }
 function animate() {
 
-	renderer.render( scene, camera );	
-//	stats.update();
+	renderer.autoClear = false;
+	renderer.render( scene, camera );		
+	renderer.render( hudScene, hudcamera );
 
+	stats.update();	
 }
 
 //mesh painting brush example
