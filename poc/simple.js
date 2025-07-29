@@ -452,6 +452,18 @@ async function init() {
 
 	updateVisualMode( 'impingement' );
 
+	visModeFolder.add( params, 'gridTexture' ).onChange( v => {
+
+		materialMap.forEach( ( m1, m2 ) => {
+
+			m1.enableGrid = v;
+			m2.enableGrid = v;
+
+		} );
+
+	} );
+	visModeFolder.add( params, 'wireframe' );
+
 	
     visModeFolder.add(params, 'spriteRadius', 0.1, 1.0).name('Impingement Radius');
 	visModeFolder.add(params, 'reset' ).name('Reset');
