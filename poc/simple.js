@@ -67,16 +67,17 @@ const params = {
 	useGroups: true,
 
 	enableDebugTelemetry: true,
-	displayIntersectionEdges: true,
-	displayTriangleIntersections: true,
+	displayIntersectionEdges: false,
+	displayTriangleIntersections: false,
 	displayBrush1BVH: false,
 	displayBrush2BVH: false,
 
 	minScale: 1.5,
 	maxScale: 2.0,
 	rotate: true,
+	spriteRadius: 0.4,
 	positions: 'stand',
-	visMode: 'normal',
+	visMode: 'impingement',
 	reset: function () {
 		resetScene();
 		removeDecal();
@@ -121,9 +122,9 @@ const mouse = new THREE.Vector2();
 const intersects = [];
 
 const textureLoader = new THREE.TextureLoader();
-const decalDiffuse = textureLoader.load( '/textures/decal/decal-diffuse.png' );
+const decalDiffuse = textureLoader.load( '/textures/decal/decal-diffuse-1.png' );
 decalDiffuse.colorSpace = THREE.SRGBColorSpace;
-const decalNormal = textureLoader.load( '/textures/decal/decal-normal.jpg' );
+const decalNormal = textureLoader.load( '/textures/decal/decal-normal-1.jpg' );
 
 const decalMaterial = new THREE.MeshPhongMaterial( {
 	specular: 0x444444,
@@ -139,14 +140,27 @@ const decalMaterial = new THREE.MeshPhongMaterial( {
 	wireframe: false
 } );
 
+
 const decals = [];
 let mouseHelper;
 const position = new THREE.Vector3();
 const orientation = new THREE.Euler();
 const size = new THREE.Vector3( 10, 10, 10 );
 let lastDecalUpdateTime;
-let decalNeedUpdate = false;
+let impgNeedUpdate = false;
 let decalBoneRotation = new THREE.Vector3(0, 0, 0);
+
+// Sprite group for impingement
+let spriteGroup = new THREE.Group();
+const sprites = [];
+const spriteDiffuse = textureLoader.load( 'textures/decal/decal-diffuse-1.png' );
+spriteDiffuse.colorSpace = THREE.SRGBColorSpace;
+const spriteMaterial = new THREE.SpriteMaterial( {
+	 map: spriteDiffuse,
+	 color: '#af2f2f',
+	 fog: true
+} );
+
 
 init();
 
@@ -188,7 +202,7 @@ async function init() {
 
 	// camera setup
 	camera = new PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 50 );
-	camera.position.set( -10.5, 0, -2.83 );
+	camera.position.set( -21.5, 2, -6.7 );
 	camera.far = 100;
 	camera.updateProjectionMatrix();
 
@@ -349,28 +363,28 @@ async function init() {
 
 	} );
 	
-	gui.add( params, 'vertexColors' ).onChange( v => {
+	// gui.add( params, 'vertexColors' ).onChange( v => {
 
-		brush1.material.vertexColors = v;
-		brush1.material.needsUpdate = true;
+	// 	brush1.material.vertexColors = v;
+	// 	brush1.material.needsUpdate = true;
 
-		brush2.material.vertexColors = v;
-		brush2.material.needsUpdate = true;
+	// 	brush2.material.vertexColors = v;
+	// 	brush2.material.needsUpdate = true;
 
-		materialMap.forEach( m => {
+	// 	materialMap.forEach( m => {
 
-			m.vertexColors = v;
-			m.needsUpdate = true;
+	// 		m.vertexColors = v;
+	// 		m.needsUpdate = true;
 
-		} );
+	// 	} );
 
-		csgEvaluator.attributes = v ?
-			[ 'color', 'position', 'normal' ] :
-			[ 'position', 'normal' ];
+	// 	csgEvaluator.attributes = v ?
+	// 		[ 'color', 'position', 'normal' ] :
+	// 		[ 'position', 'normal' ];
 
-		needsUpdate = true;
+	// 	needsUpdate = true;
 
-	} );	
+	// } );	
 
 	// default rotate
 	transformControls.setMode( 'rotate' );
@@ -418,17 +432,23 @@ async function init() {
 	rotFolder.open();
 
 
-	gui.add( params, 'minScale', 1, 30 );
-	gui.add( params, 'maxScale', 1, 30 );
-	gui.add( params, 'rotate' );
-	gui.add( params, 'reset' );
+	//gui.add( params, 'minScale', 1, 30 );
+	//gui.add( params, 'maxScale', 1, 30 );
+	//gui.add( params, 'rotate' );
+
+	const visModeFolder = gui.addFolder( 'Visual' );	
 
 	//add a button for collision/visual mode
-	gui.add(params, 'visMode', ['normal', 'transparent', 'intersection', 'impingement']).name('Mode').onChange( (v) => {
-		updateVisualMode( v );	
+	visModeFolder.add(params, 'visMode', ['transparent', 'intersection', 'impingement']).name('Mode').onChange( (v) => {
+		updateVisualMode( v );
 	});
 
-	updateVisualMode( 'normal' );
+	updateVisualMode( 'impingement' );
+
+    visModeFolder.add(params, 'spriteRadius', 0.1, 1.0).name('Impingement Radius');
+	visModeFolder.add( params, 'reset' ).name('Reset');
+	visModeFolder.open();
+
 	initDecal();
 
 
@@ -465,17 +485,7 @@ function updatePositions( mode ) {
 }
 
 function updateVisualMode( mode ) {
-	if ( mode === 'normal' ) {
-		params.operation = ADDITION;
-		params.useGroups = false;
-
-		params.displayBrushes = false;
-		brush1.visible = params.displayBrushes;
-		brush2.visible = params.displayBrushes;
-
-		showHideDecalMesh( false );
-	}
-	else if ( mode === 'transparent' ) {
+	if ( mode === 'transparent' ) {
 		params.operation = SUBTRACTION;
 		
 		params.useGroups = true;
@@ -484,6 +494,7 @@ function updateVisualMode( mode ) {
 		brush2.visible = params.displayBrushes;
 
 		showHideDecalMesh( false );
+		removeSprites();
 	}
 	else if ( mode === 'intersection' ) {
 		params.operation = SUBTRACTION;
@@ -494,6 +505,7 @@ function updateVisualMode( mode ) {
 		brush2.visible = params.displayBrushes;
 
 		showHideDecalMesh( false );
+		removeSprites();
 	} else if ( mode === 'impingement' ) {		
 		
 		params.operation = ADDITION;
@@ -503,7 +515,9 @@ function updateVisualMode( mode ) {
 		brush1.visible = params.displayBrushes;
 		brush2.visible = params.displayBrushes;
 
-		showHideDecalMesh( true );
+		showHideDecalMesh( false );
+		removeSprites();
+		impgNeedUpdate = false;
 	}
 	needsUpdate = true;
 }
@@ -581,7 +595,7 @@ function updateBrush( brush, type, complexity, mesh ) {
 function resetScene() {	
 
 	// reset camera
-	camera.position.set( -10.5, 0, -2.83 );
+	camera.position.set( -21.5, 2, -6.7 );
 	camera.updateProjectionMatrix();
 	controls.reset();
 	
@@ -594,17 +608,23 @@ function resetScene() {
 
 	Object.keys(_controllers).forEach((key) => _controllers[key].updateDisplay());
 	needsUpdate = true;	
+
+	params.spriteRadius = 0.4;
+	removeDecal();
+	removeSprites();
 }
 
 function render() {
 
 	requestAnimationFrame( render );
 
+	//log camera position
+	//console.log( 'camera position:', camera.position );
+
 	const enableDebugTelemetry = params.enableDebugTelemetry;
 	if ( needsUpdate ) {
 
 		needsUpdate = false;
-		decalNeedUpdate = true;
 
 		brush1.updateMatrixWorld();
 		brush2.updateMatrixWorld();
@@ -645,16 +665,17 @@ function render() {
 		const timeNow = Date.now();
 		const rotVector = new THREE.Vector3(0, 0, 0);
 		rotVector.copy( brush2.rotation );
-		if(decalBoneRotation.distanceTo( rotVector ) > 0.01) {
+		if(decalBoneRotation.distanceTo( rotVector ) > 0.001) {
 			lastDecalUpdateTime = timeNow;
 			decalBoneRotation.copy( rotVector );
-			decalNeedUpdate = false;	
-			removeDecal();
+			impgNeedUpdate = false;	
+			//removeDecal();
+			removeSprites();
 		}
-		if ( (timeNow - lastDecalUpdateTime) > 1000 && !decalNeedUpdate ) {
-			decalNeedUpdate = true;
-			removeDecal();
-			updateDecalsOnEdge();
+		if ( (timeNow - lastDecalUpdateTime) > 1000 && !impgNeedUpdate ) {
+			impgNeedUpdate = true;			
+			//addDecalsOnEdge();
+			addSpritesOnEdge();
 		}
 	}	
 
@@ -674,11 +695,70 @@ function render() {
 	bvhHelper2.visible = params.displayBrush2BVH;
 }
 
-//vertext colors to show impingement
-function updateDecalsOnEdge() {
+// add sprites on edge mesh
+function addSpritesOnEdge() {
+	if ( edgesHelper === undefined ) return;
+
+	//remove existing sprites
+	removeSprites();
+
+	const positions = edgesHelper.geometry.attributes.position;
+	console.log( 'addSpritesOnEdge - positions count:', positions.count );	
+
+	let pos = new THREE.Vector3();
+	let lastPosition = new THREE.Vector3();
+	for ( let a = 0; a < positions.count; a ++ ) {
+
+		pos.fromBufferAttribute( positions, a );
+		// if the position is too close to the last position, skip it
+
+		const distance = pos.distanceTo(lastPosition);
+		const minDistance = params.spriteRadius * 0.1; // minimum distance between sprites
+		if ( distance > minDistance || a === 0 ) 
+		{			
+			let material = spriteMaterial.clone();
+			const sprite = new THREE.Sprite( material );
+			lastPosition.copy( pos );
+
+			sprite.position.copy( pos );
+			//sprite.position.z -= 0.1; // offset sprite slightly above the edge
+			//sprite.renderOrder = a; // set render order based on index
+			sprite.scale.set( params.spriteRadius, params.spriteRadius, params.spriteRadius ); // set sprite size
+			//sprite.position.normalize();
+			//sprite.position.multiplyScalar( radius );
+			spriteGroup.add( sprite );	
+		}		
+		
+	}
+
+	// log total sprites
+	console.log( 'Total sprites added:', spriteGroup.children.length );
+	scene.add( spriteGroup );
+}
+
+// remove all sprites
+function removeSprites() {
+	if ( spriteGroup === undefined ) return;
+
+	// log total sprites before removing
+	console.log( 'Removing sprites:', spriteGroup.children.length );
+
+	while ( spriteGroup.children.length > 0 ) {
+		const sprite = spriteGroup.children[ 0 ];
+		spriteGroup.remove( sprite );
+		sprite.material.dispose();
+		sprite.geometry.dispose();
+	}
+
+	scene.remove( spriteGroup );
+}
+
+//Update decals on boolean mesh edges
+function addDecalsOnEdge() {
 	if ( decalMesh === undefined ) return;
 
 	const positions = edgesHelper.geometry.attributes.position;
+	console.log( 'addDecalsOnEdge - positions count:', positions.count );
 	
 	// add decals for all vertices positions
 	let lastPosition = new THREE.Vector3();
@@ -691,12 +771,12 @@ function updateDecalsOnEdge() {
 		if ( distance > 0.5 || i === 0 ) 
 		{			
 			lastPosition.copy( pos );
-			addDecalAtPosition( pos );			
-		}
-		
+			addDecalAtPosition( pos );		
+		}		
 	}
+
 	// log total decals
-	console.log( 'Total decals:', decals.length );
+	console.log( 'Total decals added:', decals.length );
 
 	const position = decalMesh.geometry.attributes.position;
 	const colors = new Float32Array( position.count * 3 );
@@ -967,10 +1047,7 @@ function onWindowResize() {
 }
 function animate() {
 
-	renderer.render( scene, camera );
-
-	//console log camera position
-	//console.log( 'camera position:', camera.position );
+	renderer.render( scene, camera );	
 //	stats.update();
 
 }
