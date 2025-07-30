@@ -55,7 +55,7 @@ const params = {
 
 	brush1Shape: 'box',
 	brush1Complexity: 1,
-	brush1Color: '#d1d1d1ff',
+	brush1Color: '#d1d1d1',
 
 	brush2Shape: 'sphere',
 	brush2Complexity: 1,
@@ -81,12 +81,32 @@ const params = {
 	maxScale: 2.0,
 	rotate: true,
 	spriteRadius: 0.4,
-	positions: 'stand',
 	visMode: 'impingement',
 	reset: function () {
 		resetScene();
 		removeDecal();
+	},
+
+	positionA: function () {
+		changePosition(0);
+	},
+
+	positionB: function () {
+		changePosition(1);
+	},
+	positionC: function () {
+		changePosition(2);
+	},
+	positionD: function () {
+		changePosition(3);
+	},
+	pelvicTiltAdd: function () {
+		pelvicTilt(0.1);
+	},
+	pelvicTiltSubtract: function () {
+		pelvicTilt(-0.1);
 	}
+
 
 };
 
@@ -217,7 +237,7 @@ async function init() {
 
 	// camera setup
 	camera = new PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 50 );
-	camera.position.set( -21.5, 2, -6.7 );
+	camera.position.set( -20.26, -0.02, -10.02 );
 	camera.far = 100;
 	camera.updateProjectionMatrix();
 
@@ -278,7 +298,7 @@ async function init() {
 	brush1.material.side = DoubleSide;
 	brush1.material.premultipliedAlpha = true;
 	brush1.material.roughness = 0.25;
-	brush1.material.color.set( 0xb5b5b5 );
+	brush1.material.color.set( "#e7e7e7" );
 
 	brush2.material.opacity = 0.15;
 	brush2.material.transparent = true;
@@ -289,7 +309,7 @@ async function init() {
 	brush2.material.side = DoubleSide;
 	brush2.material.premultipliedAlpha = true;
 	brush2.material.roughness = 0.25;
-	brush2.material.color.set( 0xE91E63 );
+	brush2.material.color.set( "#E91E63" );
 
 	brush1.receiveShadow = true;
 	brush2.receiveShadow = true;
@@ -376,26 +396,9 @@ async function init() {
 
 	// gui
 	gui = new GUI();
-	gui.add( params, 'operation', { ADDITION, SUBTRACTION, REVERSE_SUBTRACTION, INTERSECTION, DIFFERENCE, HOLLOW_INTERSECTION, HOLLOW_SUBTRACTION } ).onChange( v => {
-
-		needsUpdate = true;
-
-		if ( v === HOLLOW_INTERSECTION || v === HOLLOW_SUBTRACTION ) {
-
-			materialMap.forEach( m => m.side = DoubleSide );
-
-		} else {
-
-			materialMap.forEach( m => m.side = FrontSide );
-
-		}
-
-	} );	
-	
 
 	// default rotate
 	transformControls.setMode( 'rotate' );
-
 	window.addEventListener( 'resize', function () {
 
 		camera.aspect = window.innerWidth / window.innerHeight;
@@ -416,14 +419,20 @@ async function init() {
 	} );
 
 	//add a button for position modes
-	gui.add(params, 'positions', ['stand', 'sit', '120squat', '90split']).name('Positions').onChange( (v) => {
-		updatePositions( v );	
-	});
+	const positionFolder = gui.addFolder( 'Positions' );
+	positionFolder.add(params, 'positionA').name('STAND');
+	positionFolder.add(params, 'positionB').name('45° SQUAT');
+	positionFolder.add(params, 'positionC').name('90° SQUAT');
+	positionFolder.add(params, 'positionD').name('120° SQUAT');
+	positionFolder.open();
+
 
 	const pelvicFolder = gui.addFolder( 'Pelvic' );
-	_controllers.pelvicTiltCtrl = pelvicFolder.add( brush2.rotation, 'x', -Math.PI / 2, Math.PI / 2 ).name( 'Pelvic Tilt' ).onChange( () => {
+	_controllers.pelvicTiltCtrl = pelvicFolder.add( brush1.rotation, 'x', -Math.PI / 2, Math.PI / 2 ).name( 'Pelvic Tilt' ).onChange( () => {
 		needsUpdate = true;
 	} );
+	pelvicFolder.add(params, 'pelvicTiltAdd').name('+');
+	pelvicFolder.add(params, 'pelvicTiltSubtract').name('-');
 
 	// add brush2 rotation controls
 	const rotFolder = gui.addFolder( 'Rotation' );
@@ -438,10 +447,6 @@ async function init() {
 	} );
 	rotFolder.open();
 
-
-	//gui.add( params, 'minScale', 1, 30 );
-	//gui.add( params, 'maxScale', 1, 30 );
-	//gui.add( params, 'rotate' );
 
 	const visModeFolder = gui.addFolder( 'Visual' );	
 
@@ -501,19 +506,29 @@ async function init() {
 
 }
 
-function updatePositions( mode ) {
-	if ( mode === 'stand' ) {
+function changePosition( index ) {
+	if ( index === 0 ) {
+		//stand
 		brush2.rotation.set( 0, 0, 0 );
 	}
-	else if ( mode === 'sit' ) {
-		brush2.rotation.set( 0, 90, 0 );
+	else if ( index === 1 ) {
+		//45° squat
+		brush2.rotation.set( 45 * Math.PI / 180, 5 * Math.PI / 180, 5 * Math.PI / 180 );
 	}
-	else if ( mode === '120squat' ) {
-		brush2.rotation.set( 0, 120, 0 );
+	else if ( index === 2 ) {
+		//90° squat
+		brush2.rotation.set(90 * Math.PI / 180, 10 * Math.PI / 180, 10 * Math.PI / 180 );
 	}
-	else if ( mode === '90split' ) {
-		brush2.rotation.set( 0, Math.PI / 2, 0 );
+	else if ( index === 3 ) {
+		//120° squat
+		brush2.rotation.set( 120 * Math.PI / 180, 15 * Math.PI / 180, 15 * Math.PI / 180 );
 	}
+	Object.keys(_controllers).forEach((key) => _controllers[key].updateDisplay());
+	needsUpdate = true;	
+}
+function pelvicTilt(value)
+{
+	brush1.rotation.x += value;
 	Object.keys(_controllers).forEach((key) => _controllers[key].updateDisplay());
 	needsUpdate = true;	
 }
@@ -629,7 +644,7 @@ function updateBrush( brush, type, complexity, mesh ) {
 function resetScene() {	
 
 	// reset camera
-	camera.position.set( -21.5, 2, -6.7 );
+	camera.position.set(-20.26, -0.02, -10.02 );
 	camera.updateProjectionMatrix();
 	controls.reset();
 	
@@ -1115,7 +1130,13 @@ function animate() {
 	renderer.render( hudScene, hudcamera );
 
 	stats.update();	
+
+	//log camera position
+	//console.log( 'camera position:', camera.position );
 }
 
 //mesh painting brush example
 //https://github.com/manthrax/monkeypaint/tree/main
+
+// freeform transform controls
+//https://github.com/tocttou/three-freeform-controls/tree/master
