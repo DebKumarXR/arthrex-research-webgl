@@ -22,7 +22,7 @@ export enum PICK_PLANE_OPACITY {
 }
 
 export const DEFAULT_CONTROLS_SEPARATION = 1;
-export const DEFAULT_ROTATION_RADIUS_SCALE = 3;
+export const DEFAULT_ROTATION_RADIUS_SCALE = 4;
 export const DEFAULT_EYE_ROTATION_SCALE = 1.25;
 export const DEFAULT_PLANE_SIZE_SCALE = 0.75;
 export const DEFAULT_TRANSLATION_DISTANCE_SCALE = 1;
@@ -107,7 +107,7 @@ export default class RotationControl extends RotationGroup {
     //ringGeometry.setAttribute("position", new Float32BufferAttribute(vertices, 3));
     //this.ring = new CLine(color, ringGeometry);
     // this.add(this.ring);
-    this.handlebar = new Octahedron(color);
+    this.handlebar = new Octahedron("#d3d3d3");
     this.handlebar.position.y = ringRadius; 
     this.handlebar.renderOrder = 1;
 
@@ -131,8 +131,8 @@ export default class RotationControl extends RotationGroup {
 			fog: false,
 			toneMapped: false,
 			transparent: true,
-      //color: color,
-      opacity: 0.5,
+      color: color,
+    //  opacity: 0.5,
 		} );	
    
     const geometry = new TorusGeometry(ringRadius, 0.05, 3, 64, Math.PI * 0.4);
