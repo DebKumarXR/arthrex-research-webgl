@@ -30,7 +30,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { MeshBVHVisualizer } from 'three-mesh-bvh';
 import SpriteText from "three-spritetext";
-
+import * as FreeformControls from '../lib/three-freeform-controls';
 
 import {
 	Brush,
@@ -191,6 +191,19 @@ const spriteMaterial = new THREE.SpriteMaterial( {
 let hudcamera, hudScene;
 let impingementLabel;
 
+// Custom controls
+const gizmoMaterial = new MeshBasicMaterial( {
+	depthTest: false,
+	depthWrite: false,
+	fog: false,
+	toneMapped: false,
+	transparent: true
+} );	
+let xLine;
+let yLine;
+let zLine;
+
+
 
 init();
 
@@ -262,18 +275,52 @@ async function init() {
 	transformControls = new TransformControls( camera, renderer.domElement );
 	transformControls.setSize( 0.75 );
 	transformControls.addEventListener( 'dragging-changed', e => {
-
 		controls.enabled = ! e.value;
-
 	} );
 	transformControls.addEventListener( 'objectChange', () => {
-
 		needsUpdate = true;
-
 	} );
 	scene.add( transformControls );
+
+
+	// create custom control
+	initTransformControls();
+
+
+	// freeform transform controls
+	const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshNormalMaterial());
+	scene.add(box);
+	box.position.set(-6, 0, 0);
+
+	const controlsManager = new FreeformControls.ControlsManager(camera, renderer.domElement);
+	scene.add(controlsManager);
+
+	// anchor controls to the box
+	const controls2 = controlsManager.anchor(box);
+	controls2.showAll(false);
+	controls2.showByNames(
+	[
+		//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YPT,
+		//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YNT,
+		FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YR,
+		FreeformControls.DEFAULT_HANDLE_GROUP_NAME.XR,
+		FreeformControls.DEFAULT_HANDLE_GROUP_NAME.ZR,
+		FreeformControls.DEFAULT_HANDLE_GROUP_NAME.ER,
+		//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.PICK_PLANE_ZX,
+	],
+	true
+	);
+
+	// disable orbit controls while the freeform-controls are in use
+	controlsManager.listen(FreeformControls.EVENTS.DRAG_START, () => {
+		controls.enabled = false;
+	});
+	controlsManager.listen(FreeformControls.EVENTS.DRAG_STOP, () => {
+		controls.enabled = true;
+	});
+
 	
-	
+
 	// CSG evaluator
 	csgEvaluator = new Evaluator();
 	csgEvaluator.attributes = [ 'position', 'normal' ];
@@ -742,6 +789,7 @@ function render() {
 
 	bvhHelper1.visible = params.displayBrush1BVH;
 	bvhHelper2.visible = params.displayBrush2BVH;	
+	
 }
 
 // add sprites on edge mesh
@@ -1129,11 +1177,65 @@ function animate() {
 	renderer.render( scene, camera );		
 	renderer.render( hudScene, hudcamera );
 
-	stats.update();	
+	stats.update();		
 
 	//log camera position
 	//console.log( 'camera position:', camera.position );
 }
+
+
+
+//Reference:
+//https://github.com/mrdoob/three.js/blob/dev/examples/jsm/controls/TransformControls.js#L354
+
+// init transform controls
+function initTransformControls() {
+	xLine = createArcLine(5, 0.1, 3, 64, Math.PI, 0xff0000);	
+	scene.add(xLine);	
+}
+
+function updateTransformControls(anchor) {
+	
+	let size = 1;
+	xLine.rotation.set( 0, 0, 0 );
+	xLine.position.copy( anchor.position );
+	let factor = anchor.position.distanceTo( camera.position ) * Math.min( 1.9 * Math.tan( Math.PI * camera.fov / 360 ) / camera.zoom, 7 );
+    xLine.scale.set( 1, 1, 1 ).multiplyScalar( factor * size / 4 );
+}
+
+// method to create an arc and add it to the scene
+ function createLine(radius, startAngle, endAngle, segments, color, lineWidth) {       
+        // Generate arc points
+        const points = [];
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const angle = startAngle + t * (endAngle - startAngle);
+            points.push(new THREE.Vector3(
+                radius * Math.cos(angle),
+                radius * Math.sin(angle),
+                0
+            ));
+        }
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({ color, linewidth: lineWidth });
+        const arcLine = new THREE.Line(geometry, material);
+		arcLine.lineWidth = lineWidth; // Set line width if supported by renderer
+        scene.add(arcLine);
+   }
+
+
+   // method to create torus geometry and add it to the scene
+	function createArcLine(radius, tube, radialSegments, tubularSegments, arc, color) {	
+
+		const matRed = gizmoMaterial.clone();
+		matRed.color.setHex( color );	
+
+		const geometry = new TorusGeometry(radius, tube, radialSegments, tubularSegments, arc);
+		const torus = new Mesh(geometry, matRed);
+		return torus;
+	}
+
+
 
 //mesh painting brush example
 //https://github.com/manthrax/monkeypaint/tree/main
