@@ -30,7 +30,10 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { MeshBVHVisualizer } from 'three-mesh-bvh';
 import SpriteText from "three-spritetext";
-import * as FreeformControls from '../lib/three-freeform-controls';
+//import * as FreeformControls from '../lib/three-freeform-controls';
+import RotationControlManager from '../lib/RotationControlManager';
+import  Controls  from '../lib/Controls';
+import { EVENTS } from "../lib/utils/events";
 
 import {
 	Brush,
@@ -49,6 +52,7 @@ import {
 } from '..';
 import { func } from 'three/examples/jsm/nodes/Nodes.js';
 
+
 window.logTriangleDefinitions = logTriangleDefinitions;
 
 const params = {
@@ -64,7 +68,7 @@ const params = {
 	operation: SUBTRACTION,
 	wireframe: false,
 	displayBrushes: true,
-	displayControls: true,
+	displayControls: false,
 	shadows: false,
 	vertexColors: false,
 	flatShading: false,
@@ -281,44 +285,6 @@ async function init() {
 		needsUpdate = true;
 	} );
 	scene.add( transformControls );
-
-
-	// create custom control
-	initTransformControls();
-
-
-	// freeform transform controls
-	const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshNormalMaterial());
-	scene.add(box);
-	box.position.set(-6, 0, 0);
-
-	const controlsManager = new FreeformControls.ControlsManager(camera, renderer.domElement);
-	scene.add(controlsManager);
-
-	// anchor controls to the box
-	const controls2 = controlsManager.anchor(box);
-	controls2.showAll(false);
-	controls2.showByNames(
-	[
-		//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YPT,
-		//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YNT,
-		FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YR,
-		FreeformControls.DEFAULT_HANDLE_GROUP_NAME.XR,
-		FreeformControls.DEFAULT_HANDLE_GROUP_NAME.ZR,
-		FreeformControls.DEFAULT_HANDLE_GROUP_NAME.ER,
-		//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.PICK_PLANE_ZX,
-	],
-	true
-	);
-
-	// disable orbit controls while the freeform-controls are in use
-	controlsManager.listen(FreeformControls.EVENTS.DRAG_START, () => {
-		controls.enabled = false;
-	});
-	controlsManager.listen(FreeformControls.EVENTS.DRAG_STOP, () => {
-		controls.enabled = true;
-	});
-
 	
 
 	// CSG evaluator
@@ -441,6 +407,45 @@ async function init() {
 	femurMesh = femurGLTF.scene.children[ 0 ].geometry;
 	femurMesh.computeVertexNormals();
 
+
+	// create custom control
+	initTransformControls();
+
+
+	// // freeform transform controls
+	// const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshNormalMaterial());
+	// scene.add(box);
+	// box.position.set(-6, 0, 0);
+
+	// const controlsManager = new FreeformControls.ControlsManager(camera, renderer.domElement);
+	// scene.add(controlsManager);
+
+	// // anchor controls to the box
+	// const controls2 = controlsManager.anchor(box);
+	// controls2.showAll(false);
+	// controls2.showByNames(
+	// [
+	// 	//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YPT,
+	// 	//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YNT,
+	// 	FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YR,
+	// 	FreeformControls.DEFAULT_HANDLE_GROUP_NAME.XR,
+	// 	FreeformControls.DEFAULT_HANDLE_GROUP_NAME.ZR,
+	// 	FreeformControls.DEFAULT_HANDLE_GROUP_NAME.ER,
+	// 	//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.PICK_PLANE_ZX,
+	// ],
+	// true
+	// );
+
+	// // disable orbit controls while the freeform-controls are in use
+	// controlsManager.listen(FreeformControls.EVENTS.DRAG_START, () => {
+	// 	controls.enabled = false;
+	// });
+	// controlsManager.listen(FreeformControls.EVENTS.DRAG_STOP, () => {
+	// 	controls.enabled = true;
+	// });
+
+	
+
 	// gui
 	gui = new GUI();
 
@@ -522,16 +527,16 @@ async function init() {
 	visModeFolder.open();
 
 	// HUD Controls
-	const planeGeometry = new BoxGeometry( 2, 2, 0.01 );
+	const planeGeometry = new BoxGeometry( 2, 1, 0.01 );
 	const material = new MeshBasicMaterial({ color: '#000000'});	
 	const hudmesh = new Mesh(planeGeometry, material);
-	hudmesh.position.x = hudcamera.left + 1.1;
-	hudmesh.position.y = hudcamera.bottom + 1;
+	hudmesh.position.x = hudcamera.left + 1;
+	hudmesh.position.y = hudcamera.bottom + 0.5;
 	hudScene.add(hudmesh);
 
 	//label for impingement	
 	impingementLabel = new SpriteText( 'Impingement Area', 0.1 );
-	impingementLabel.position.set(0, 0.9, 0.01);
+	impingementLabel.position.set(0, 0.4, 0.01);
 	hudmesh.add(impingementLabel);
 
 	// init decals
@@ -1174,10 +1179,13 @@ function onWindowResize() {
 function animate() {
 
 	renderer.autoClear = false;
+	updateTransformControls(xLine);
+
+
 	renderer.render( scene, camera );		
 	renderer.render( hudScene, hudcamera );
-
 	stats.update();		
+	
 
 	//log camera position
 	//console.log( 'camera position:', camera.position );
@@ -1190,18 +1198,61 @@ function animate() {
 
 // init transform controls
 function initTransformControls() {
-	xLine = createArcLine(5, 0.1, 3, 64, Math.PI, 0xff0000);	
-	scene.add(xLine);	
+	//xLine = createArcLine(5, 0.1, 3, 64, Math.PI, 0xff0000);	
+
+	// const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshNormalMaterial());
+	// scene.add(box);
+	// box.position.set(-6, 0, 0);
+	// create a new Controls instance
+	//xLine = new Controls( box, camera, {rotationRadiusScale: 2} );
+	//scene.add(xLine);	
+	
+	
+	// freeform transform controls
+	const box = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshNormalMaterial());
+	scene.add(box);
+	box.position.copy( brush2.position );
+
+
+	const controlsManager = new RotationControlManager(camera, renderer.domElement);
+	scene.add(controlsManager);
+
+	// anchor controls to the box
+	const controls2 = controlsManager.anchor(box);
+	
+	// disable orbit controls while the freeform-controls are in use
+	controlsManager.listen(EVENTS.DRAG_START, () => {
+		controls.enabled = false;
+	});
+	controlsManager.listen(EVENTS.DRAG_STOP, () => {
+		controls.enabled = true;
+	});
+
 }
 
 function updateTransformControls(anchor) {
 	
-	let size = 1;
-	xLine.rotation.set( 0, 0, 0 );
-	xLine.position.copy( anchor.position );
-	let factor = anchor.position.distanceTo( camera.position ) * Math.min( 1.9 * Math.tan( Math.PI * camera.fov / 360 ) / camera.zoom, 7 );
-    xLine.scale.set( 1, 1, 1 ).multiplyScalar( factor * size / 4 );
+	// let size = 1;
+	// xLine.rotation.set( 0, 0, 0 );
+	// xLine.position.copy( anchor.position );
+	// let factor = anchor.position.distanceTo( camera.position ) * Math.min( 1.9 * Math.tan( Math.PI * camera.fov / 360 ) / camera.zoom, 7 );
+    // xLine.scale.set( 1, 1, 1 ).multiplyScalar( factor * size / 4 );
+
+	//const cameraWorldPosition = new THREE.Vector3();
+    //camera.getWorldPosition(cameraWorldPosition);
+
+    // Make the object look at the camera's world position
+   // anchor.lookAt(cameraWorldPosition);
+  // anchor.lookAtCamera( camera );
+
 }
+
+// update matrix world for transform controls
+function updateMatrixWorld(force, object)
+{
+	
+}
+
 
 // method to create an arc and add it to the scene
  function createLine(radius, startAngle, endAngle, segments, color, lineWidth) {       

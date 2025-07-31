@@ -1,17 +1,30 @@
-import Controls, { IControlsOptions } from "./controls";
+import Controls, { IControlsOptions } from "./Controls";
 import Raycaster  from "./utils/raycaster";
 import { emitter, unbindAll } from "./utils/emmiter";
-import { DEFAULT_HANDLE_GROUP_NAME } from "./controls/handles";
+import { DEFAULT_HANDLE_GROUP_NAME, ANCHOR_MODE } from "./Controls";
 import { Camera, Mesh, Object3D } from "three";
 import { EVENTS } from "./utils/events";
+import RotationControl, { RotationGroup } from "./RotationControl";
+
+
+
+
+export {
+  EVENTS,
+  DEFAULT_HANDLE_GROUP_NAME,
+  ANCHOR_MODE,
+  RotationControl,  
+  RotationGroup,
+  RotationControlManager,
+};
 
 /**
- * The ControlsManager provides helper functions to create Controls instances
+ * The RotationControlManager provides helper functions to create Controls instances
  * and link them up with a Raycaster instance (reused across multiple Controls
  * instances).
  * @noInheritDoc
  */
-export default class ControlsManager extends Object3D {
+export default class RotationControlManager extends Object3D {
   private objects: { [id: number]: Object3D } = {};
   private controls: { [id: number]: Controls } = {};
   private eventListeners: {
@@ -189,3 +202,4 @@ export default class ControlsManager extends Object3D {
     };
   };
 }
+

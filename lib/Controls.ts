@@ -4,20 +4,12 @@ import {
   DEFAULT_PLANE_SIZE_SCALE,
   DEFAULT_ROTATION_RADIUS_SCALE,
   DEFAULT_TRANSLATION_DISTANCE_SCALE,
-} from "../utils/constants";
-import Translation from "./handles/translation";
-import Rotation from "./handles/rotation";
-import Pick from "./handles/pick";
-import PickPlane from "./handles/pick-plane";
-import {
-  DEFAULT_HANDLE_GROUP_NAME,
   IHandle,
-  PickGroup,
-  PickPlaneGroup,
   RotationGroup,
-  TranslationGroup,
-} from "./handles";
-import RotationEye from "./handles/rotation-eye";
+} from "./RotationControl";
+
+import RotationControl from "./RotationControl";
+
 import { Camera, Group, MathUtils, Mesh, Object3D, Quaternion, Vector3 } from "three";
 
 export enum ANCHOR_MODE {
@@ -30,6 +22,155 @@ export enum ANCHOR_MODE {
    * In this mode the Controls rotate as the object is rotated.
    */
   INHERIT = "inherit",
+}
+
+export enum DEFAULT_HANDLE_GROUP_NAME {
+  /**
+   * name for default translation handle along the +ve x-axis
+   */
+  XPT = "xpt_handle",
+  /**
+   * name for default translation handle along the +ve y-axis
+   */
+  YPT = "ypt_handle",
+  /**
+   * name for default translation handle along the +ve z-axis
+   */
+  ZPT = "zpt_handle",
+  /**
+   * name for default translation handle along the -ve x-axis
+   */
+  XNT = "xnt_handle",
+  /**
+   * name for default translation handle along the -ve y-axis
+   */
+  YNT = "ynt_handle",
+  /**
+   * name for default translation handle along the -ve z-axis
+   */
+  ZNT = "znt_handle",
+  /**
+   * name for default rotation handle along the x-axis
+   */
+  XR = "xr_handle",
+  /**
+   * name for default rotation handle along the y-axis
+   */
+  YR = "yr_handle",
+  /**
+   * name for default rotation handle along the z-axis
+   */
+  ZR = "zr_handle",
+  /**
+   * name for default rotation handle in the eye-plane
+   */
+  ER = "er_handle",
+  /**
+   * name for default translation handle in the eye-plane
+   */
+  PICK = "pick_handle",
+  /**
+   * name for default translation handle in the xy plane
+   */
+  PICK_PLANE_XY = "pick_plane_xy_handle",
+  /**
+   * name for default translation handle in the yz plane
+   */
+  PICK_PLANE_YZ = "pick_plane_yz_handle",
+  /**
+   * name for default translation handle in the zx plane
+   */
+  PICK_PLANE_ZX = "pick_plane_zx_handle",
+}
+
+export interface IControlsOptions {
+  /**
+   * the anchor mode for the controls
+   * @default [[ANCHOR_MODE.FIXED]]
+   */
+  mode?: ANCHOR_MODE;
+  /**
+   * distance between the position of the object and the position of the
+   * handles (in case of translation handles), or the radius (in case of rotation handles),
+   * or the size of the plane (in case of plane handles)
+   * @default 0.5
+   */
+  separation?: number;
+  /**
+   * uses THREE.Mesh.computeBounds to set the separation; if separation
+   * is provided in addition to this option, it is added to the computed bounds
+   * @default false
+   */
+  useComputedBounds?: boolean;
+  /**
+   * the quaternion applied to the whole Controls instance (handles get rotated relatively)
+   * @default undefined
+   */
+  orientation?: {
+    x: number;
+    y: number;
+    z: number;
+    w: number;
+  };
+  /**
+   * hides other handles of a Controls instance when drag starts
+   * @default true
+   */
+  hideOtherHandlesOnDrag?: boolean;
+  /**
+   *  hides all other Controls instances when drag starts
+   *  @default true
+   */
+  hideOtherControlsInstancesOnDrag?: boolean;
+  /**
+   * displays the plane in which the drag interaction takes place
+   * (useful for debugging)
+   * @default false
+   */
+  showHelperPlane?: boolean;
+  /**
+   * enables damping for the controls
+   * @default true
+   */
+  isDampingEnabled?: boolean;
+  /**
+   * sets the scaling factor for the radius of rotation handles
+   * @default 1.0
+   */
+  rotationRadiusScale?: number;
+  /**
+   * sets the scaling factor for the radius of rotation handles in eye plane
+   * @default 1.25
+   */
+  eyeRotationRadiusScale?: number;
+  /**
+   * sets the width and height scale for the pick plane handles
+   * @default 0.75
+   */
+  pickPlaneSizeScale?: number;
+  /**
+   * sets the scaling for distance between translation handles' start and the
+   * center of the controls
+   * @default 1.0
+   */
+  translationDistanceScale?: number;
+  /**
+   * For translation handles: highlights the axis along which the object moves.
+   * For rotation handles: highlights the axis of rotation.
+   * Not available on other handles.
+   * @default true
+   */
+  highlightAxis?: boolean;
+  /**
+   * Enables snap to grid (nearest integer coordinate) for all translation type handles:
+   * [[TranslationGroup]], [[PickGroup]], and [[PickPlaneGroup]]
+   * @default { x: false, y: false, z: false }
+   */
+  snapTranslation?: {
+    x: boolean;
+    y: boolean;
+    z: boolean;
+  };
 }
 
 /**
@@ -149,68 +290,23 @@ export interface IControlsOptions {
  * @noInheritDoc
  */
 export default class Controls extends Group {
-  /**
-   * handle which translates the object in the eye-plane
-   */
-  public readonly pick: Pick;
-  /**
-   * handle which translates the object in XY plane
-   */
-  public readonly pickPlaneXY: PickPlane;
-  /**
-   * handle which translates the object in YZ plane
-   */
-  public readonly pickPlaneYZ: PickPlane;
-  /**
-   * handle which translates the object in ZX plane
-   */
-  public readonly pickPlaneZX: PickPlane;
-  /**
-   * handle which translates the object along the x-axis; displayed in the
-   * +ve x-axis direction
-   */
-  public readonly translationXP: Translation;
-  /**
-   * handle which translates the object along the y-axis; displayed in the
-   * +ve y-axis direction
-   */
-  public readonly translationYP: Translation;
-  /**
-   * handle which translates the object along the z-axis; displayed in the
-   * +ve z-axis direction
-   */
-  public readonly translationZP: Translation;
-  /**
-   * handle which translates the object along the x-axis; displayed in the
-   * -ve x-axis direction
-   */
-  public readonly translationXN: Translation;
-  /**
-   * handle which translates the object along the y-axis; displayed in the
-   * -ve y-axis direction
-   */
-  public readonly translationYN: Translation;
-  /**
-   * handle which translates the object along the z-axis; displayed in the
-   * -ve z-axis direction
-   */
-  public readonly translationZN: Translation;
+  
   /**
    * handle which rotates the object along the x-axis
    */
-  public readonly rotationX: Rotation;
+  public readonly rotationX: RotationControl;
   /**
    * handle which rotates the object along the y-axis
    */
-  public readonly rotationY: Rotation;
+  public readonly rotationY: RotationControl;
   /**
    * handle which rotates the object along the z-axis
    */
-  public readonly rotationZ: Rotation;
+  public readonly rotationZ: RotationControl;
   /**
    * handle which rotates the object in the eye-plane
    */
-  public readonly rotationEye: RotationEye;
+
   private handleTargetQuaternion = new Quaternion();
   private objectWorldPosition = new Vector3();
   private objectTargetPosition = new Vector3();
@@ -320,63 +416,25 @@ export default class Controls extends Group {
 
     this.computeObjectBounds();
 
-    this.pick = new Pick();
+    
 
-    this.pickPlaneXY = new PickPlane(
-      "yellow",
-      this.boundingSphereRadius * this.pickPlaneSizeScale,
-      this.boundingSphereRadius * this.pickPlaneSizeScale
-    );
-    this.pickPlaneYZ = new PickPlane(
-      "cyan",
-      this.boundingSphereRadius * this.pickPlaneSizeScale,
-      this.boundingSphereRadius * this.pickPlaneSizeScale
-    );
-    this.pickPlaneZX = new PickPlane(
-      "pink",
-      this.boundingSphereRadius * this.pickPlaneSizeScale,
-      this.boundingSphereRadius * this.pickPlaneSizeScale
-    );
+    this.rotationX = new RotationControl("red", this.boundingSphereRadius * this.rotationRadiusScale, Math.PI * 0, Math.PI * 0.4);
+    this.rotationY = new RotationControl("green", this.boundingSphereRadius * this.rotationRadiusScale, Math.PI * 0.7, Math.PI * 1.1);
+    this.rotationZ = new RotationControl("blue", this.boundingSphereRadius * this.rotationRadiusScale, Math.PI * 1.4, Math.PI * 1.8);
 
-    this.translationXP = new Translation("red");
-    this.translationYP = new Translation("green");
-    this.translationZP = new Translation("blue");
+    this.rotationX.camera = this.camera;
+    this.rotationY.camera = this.camera;
+    this.rotationZ.camera = this.camera;
 
-    this.translationXN = new Translation("red");
-    this.translationYN = new Translation("green");
-    this.translationZN = new Translation("blue");
-
-    this.rotationX = new Rotation("red", this.boundingSphereRadius * this.rotationRadiusScale);
-    this.rotationY = new Rotation("green", this.boundingSphereRadius * this.rotationRadiusScale);
-    this.rotationZ = new Rotation("blue", this.boundingSphereRadius * this.rotationRadiusScale);
-
-    this.rotationEye = new RotationEye(
-      "yellow",
-      this.boundingSphereRadius * this.eyeRotationRadiusScale
-    );
-
-    this.setupDefaultTranslation();
+    //this.setupDefaultTranslation();
     this.setupDefaultRotation();
-    this.setupDefaultEyeRotation();
-    this.setupDefaultPickPlane();
-    this.setupDefaultPick();
+    //this.setupDefaultEyeRotation();
+   // this.setupDefaultPickPlane();
+    //this.setupDefaultPick();
   }
 
   private setupDefaultPickPlane = () => {
-    this.pickPlaneXY.name = DEFAULT_HANDLE_GROUP_NAME.PICK_PLANE_XY;
-    this.pickPlaneYZ.name = DEFAULT_HANDLE_GROUP_NAME.PICK_PLANE_YZ;
-    this.pickPlaneZX.name = DEFAULT_HANDLE_GROUP_NAME.PICK_PLANE_ZX;
-
-    this.pickPlaneYZ.up = new Vector3(1, 0, 0);
-    this.pickPlaneZX.up = new Vector3(0, 1, 0);
-    this.pickPlaneXY.up = new Vector3(0, 0, 1);
-
-    this.pickPlaneYZ.rotateY(Math.PI / 2);
-    this.pickPlaneZX.rotateX(Math.PI / 2);
-
-    this.setupHandle(this.pickPlaneXY);
-    this.setupHandle(this.pickPlaneYZ);
-    this.setupHandle(this.pickPlaneZX);
+    
   };
 
   public setupHandle = (handle: IHandle) => {
@@ -384,65 +442,7 @@ export default class Controls extends Group {
     this.add(handle);
   };
 
-  private setupDefaultPick = () => {
-    this.pick.name = DEFAULT_HANDLE_GROUP_NAME.PICK;
-    this.setupHandle(this.pick);
-  };
 
-  private setupDefaultEyeRotation = () => {
-    this.rotationEye.name = DEFAULT_HANDLE_GROUP_NAME.ER;
-    this.rotationEye.camera = this.camera;
-    this.setupHandle(this.rotationEye);
-  };
-
-  private setupDefaultTranslation = () => {
-    this.translationXP.name = DEFAULT_HANDLE_GROUP_NAME.XPT;
-    this.translationYP.name = DEFAULT_HANDLE_GROUP_NAME.YPT;
-    this.translationZP.name = DEFAULT_HANDLE_GROUP_NAME.ZPT;
-
-    this.translationXN.name = DEFAULT_HANDLE_GROUP_NAME.XNT;
-    this.translationYN.name = DEFAULT_HANDLE_GROUP_NAME.YNT;
-    this.translationZN.name = DEFAULT_HANDLE_GROUP_NAME.ZNT;
-
-    this.translationXP.translateX(this.boundingSphereRadius * this.translationDistanceScale);
-    this.translationYP.translateY(this.boundingSphereRadius * this.translationDistanceScale);
-    this.translationZP.translateZ(this.boundingSphereRadius * this.translationDistanceScale);
-
-    this.translationXN.translateX(-this.boundingSphereRadius * this.translationDistanceScale);
-    this.translationYN.translateY(-this.boundingSphereRadius * this.translationDistanceScale);
-    this.translationZN.translateZ(-this.boundingSphereRadius * this.translationDistanceScale);
-
-    this.translationXP.rotateZ(-Math.PI / 2);
-    this.translationZP.rotateX(Math.PI / 2);
-
-    this.translationXN.rotateZ(Math.PI / 2);
-    this.translationYN.rotateX(Math.PI);
-    this.translationZN.rotateX(-Math.PI / 2);
-
-    this.translationXP.up = new Vector3(0, 1, 0);
-    this.translationYP.up = new Vector3(0, 0, 1);
-    this.translationZP.up = new Vector3(0, 1, 0);
-
-    this.translationXN.up = new Vector3(0, -1, 0);
-    this.translationYN.up = new Vector3(0, 0, -1);
-    this.translationZN.up = new Vector3(0, -1, 0);
-
-    this.translationXP.parallel = new Vector3(1, 0, 0);
-    this.translationYP.parallel = new Vector3(0, 1, 0);
-    this.translationZP.parallel = new Vector3(0, 0, 1);
-
-    this.translationXN.parallel = new Vector3(-1, 0, 0);
-    this.translationYN.parallel = new Vector3(0, -1, 0);
-    this.translationZN.parallel = new Vector3(0, 0, -1);
-
-    this.setupHandle(this.translationXP);
-    this.setupHandle(this.translationYP);
-    this.setupHandle(this.translationZP);
-
-    this.setupHandle(this.translationXN);
-    this.setupHandle(this.translationYN);
-    this.setupHandle(this.translationZN);
-  };
 
   private setupDefaultRotation = () => {
     this.rotationX.name = DEFAULT_HANDLE_GROUP_NAME.XR;
@@ -504,12 +504,10 @@ export default class Controls extends Group {
   processDragStart = (args: { point: Vector3; handle: IHandle }) => {
     const { point, handle } = args;
     this.dragStartPoint.copy(point);
-    this.dragIncrementalStartPoint.copy(point);
-    this.isBeingDraggedTranslation =
-      handle instanceof TranslationGroup ||
-      handle instanceof PickGroup ||
-      handle instanceof PickPlaneGroup;
+    this.dragIncrementalStartPoint.copy(point);   
     this.isBeingDraggedRotation = handle instanceof RotationGroup;
+
+    console.log("Drag started:", { point, handle });
   };
 
   /**
@@ -519,25 +517,11 @@ export default class Controls extends Group {
     const { handle } = args;
     const { x: xSnap, y: ySnap, z: zSnap } = this.snapTranslation;
     const snap = [xSnap, ySnap, zSnap];
-    if (
-      handle instanceof TranslationGroup ||
-      handle instanceof PickPlaneGroup ||
-      handle instanceof PickGroup
-    ) {
-      const xyz = this.object.position.toArray();
-      const floor = xyz.map(Math.floor);
-      const ceil = xyz.map(Math.ceil);
-      const snapFloor = xyz.map((p, index) => ceil[index] - p >= p - floor[index]);
-      const position = xyz.map((p, index) => {
-        if (!snap[index]) {
-          return p;
-        }
-        return snapFloor[index] ? floor[index] : ceil[index];
-      });
-      this.object.position.fromArray(position);
-    }
+
     this.isBeingDraggedTranslation = false;
     this.isBeingDraggedRotation = false;
+
+    console.log("Drag ended:", { handle });
   };
 
   /**
@@ -554,26 +538,7 @@ export default class Controls extends Group {
     const { point, handle, dragRatio = 1 } = args;
     const k = Math.exp(-this.dampingFactor * Math.abs(dragRatio ** 3));
 
-    if (handle instanceof TranslationGroup) {
-      this.deltaPosition.copy(point).sub(this.dragIncrementalStartPoint);
-      this.normalizedHandleParallelVectorCache
-        .copy(handle.parallel.normalize())
-        .applyQuaternion(this.quaternion);
-
-      const delta = this.deltaPosition.dot(this.normalizedHandleParallelVectorCache);
-      this.deltaPosition
-        .copy(this.normalizedHandleParallelVectorCache)
-        .multiplyScalar(this.isDampingEnabled ? k * delta : delta);
-
-      this.position.copy(this.getLimitedTranslation(this.deltaPosition));
-    } else if (handle instanceof PickGroup || handle instanceof PickPlaneGroup) {
-      this.deltaPosition
-        .copy(point)
-        .sub(this.dragIncrementalStartPoint)
-        .multiplyScalar(this.isDampingEnabled ? k : 1);
-
-      this.position.copy(this.getLimitedTranslation(this.deltaPosition));
-    } else {
+    {
       this.touch1.copy(this.dragIncrementalStartPoint).sub(this.objectWorldPosition).normalize();
 
       this.touch2.copy(point).sub(this.objectWorldPosition).normalize();
@@ -717,3 +682,4 @@ export default class Controls extends Group {
     super.updateMatrixWorld(force);
   };
 }
+

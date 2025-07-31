@@ -1,11 +1,7 @@
 import { emitter } from "./emmiter";
-import Controls from "../controls";
-import PickPlane from "../controls/handles/pick-plane";
-import { PICK_PLANE_OPACITY } from "./constants";
-import { IHandle, PickGroup, RotationGroup, TranslationGroup } from "../controls/handles";
-import RotationEye from "../controls/handles/rotation-eye";
+import Controls from "../Controls";
+import { IHandle,  RotationGroup, } from "../RotationControl";
 import { addEventListener, getPointFromEvent, removeEventListener } from "./helper";
-import Line from "../primitives/line";
 import * as THREE from "three";
 import { EVENTS } from "./events";
 
@@ -24,15 +20,14 @@ export default class Raycaster extends THREE.Raycaster {
   private clientDiagonalLength = 1;
   private previousScreenPoint = new THREE.Vector2();
   private currentScreenPoint = new THREE.Vector2();
-  private readonly highlightAxisLine: Line;
+  
 
   constructor(
     public camera: THREE.Camera,
     private domElement: HTMLElement,
     private controls: { [id: string]: Controls }
   ) {
-    super();
-    this.highlightAxisLine = this.createAxisLine();
+    super();    
     /**
      * mousedown and touchstart are used instead of pointerdown because
      * pointermove seems to stop firing after some a few events in chrome mobile
@@ -48,12 +43,6 @@ export default class Raycaster extends THREE.Raycaster {
       capture: true,
     });
   }
-
-  private createAxisLine = () => {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, -100, 0, 0, 100], 3));
-    return new Line("white", geometry);
-  };
 
   /**
    * Find the handle the user clicked on.
@@ -146,12 +135,10 @@ export default class Raycaster extends THREE.Raycaster {
       const controls = activeHandle.parent as Controls;
       if (
         controls.highlightAxis &&
-        (this.activeHandle instanceof TranslationGroup ||
-          this.activeHandle instanceof RotationGroup) &&
-        !(this.activeHandle instanceof RotationEye)
+        (this.activeHandle instanceof RotationGroup)
       ) {
         //The highlighted axis always passes through the center of the parent object.
-        activeHandle.parent.getWorldPosition(this.highlightAxisLine.position);
+       // activeHandle.parent.getWorldPosition(this.highlightAxisLine.position);
 
         // Find the direction vector of the selected handler, either parallel or up.
         // Rotate this vector by the parent component world quaternion.
@@ -160,17 +147,16 @@ export default class Raycaster extends THREE.Raycaster {
         const quaternion = new THREE.Quaternion();
         activeHandle.parent.getWorldQuaternion(quaternion);
         let direction: THREE.Vector3;
-        if (this.activeHandle instanceof TranslationGroup) {
-          direction = this.activeHandle.parallel.clone();
-        } else {
-          direction = this.activeHandle.up.clone();
-        }
-        direction.applyQuaternion(quaternion);
-        const point = this.highlightAxisLine.position.clone().add(direction);
-        this.highlightAxisLine.lookAt(point);
 
-        const scene = controls.parent as THREE.Scene;
-        scene.add(this.highlightAxisLine);
+        
+          direction = this.activeHandle.up.clone();
+       
+        direction.applyQuaternion(quaternion);
+       // const point = this.highlightAxisLine.position.clone().add(direction);
+       // this.highlightAxisLine.lookAt(point);
+
+       // const scene = controls.parent as THREE.Scene;
+       // scene.add(this.highlightAxisLine);
       }
     }
   };
@@ -186,17 +172,9 @@ export default class Raycaster extends THREE.Raycaster {
       const controls = activeHandle.parent as Controls;
       const eyePlaneNormal = this.getEyePlaneNormal(activeHandle);
       const normal = new THREE.Vector3();
-      normal.copy(activeHandle instanceof PickGroup ? eyePlaneNormal : activeHandle.up);
-      if (!(activeHandle instanceof RotationEye || activeHandle instanceof PickGroup)) {
-        const quaternion = new THREE.Quaternion();
-        controls.getWorldQuaternion(quaternion);
-        normal.applyQuaternion(quaternion);
-      }
-      if (activeHandle instanceof TranslationGroup) {
-        activePlane.setFromNormalAndCoplanarPoint(normal, activeHandle.position);
-      } else {
+     
         activePlane.setFromNormalAndCoplanarPoint(normal, controls.position);
-      }
+      
     }
     return activePlane;
   };
@@ -209,24 +187,12 @@ export default class Raycaster extends THREE.Raycaster {
   private calculateManipulationPoint = (): THREE.Vector3 => {
     const manipulationPoint = new THREE.Vector3();
     if (this.activeHandle?.parent) {
-      if (this.activeHandle instanceof PickGroup) {
-        this.activeHandle.getWorldPosition(manipulationPoint);
-      } else if (this.activeHandle instanceof TranslationGroup) {
-        // Translation ray.
-        const axisOrigin = new THREE.Vector3();
-        this.activeHandle.parent.getWorldPosition(axisOrigin);
-        const quaternion = new THREE.Quaternion();
-        this.activeHandle.parent.getWorldQuaternion(quaternion);
-        const axisDirection = this.activeHandle.parallel.clone().applyQuaternion(quaternion);
-        const axisRay = new THREE.Ray(axisOrigin, axisDirection);
-        const point = this.findClosestPoints(this.ray, axisRay)[0];
-        manipulationPoint.copy(point);
-      } else {
+     
         const activePlane = this.calculateActivePlane(this.activeHandle);
         if (activePlane) {
           this.ray.intersectPlane(activePlane, manipulationPoint);
         }
-      }
+     
     }
     return manipulationPoint;
   };
@@ -256,9 +222,7 @@ export default class Raycaster extends THREE.Raycaster {
       this.hideOtherControlsInstancesOnDrag(this.activeHandle);
       this.hideOtherHandlesOnDrag(this.activeHandle);
 
-      if (this.activeHandle instanceof PickPlane) {
-        this.setPickPlaneOpacity(PICK_PLANE_OPACITY.ACTIVE);
-      }
+     
 
       this.showAxis(this.activeHandle);
 
@@ -358,32 +322,13 @@ export default class Raycaster extends THREE.Raycaster {
       this.visibleHandles = [];
     }
 
-    if (this.activeHandle instanceof PickPlane) {
-      this.setPickPlaneOpacity(PICK_PLANE_OPACITY.INACTIVE);
-    }
+    
 
-    const scene = this.activeHandle?.parent?.parent;
-    if (scene) {
-      scene.remove(this.highlightAxisLine);
-    }
+    const scene = this.activeHandle?.parent?.parent;   
     this.activeHandle = null;
   };
 
-  private setPickPlaneOpacity(opacity: number) {
-    if (!(this.activeHandle instanceof PickPlane)) {
-      return;
-    }
-    const material = this.activeHandle.plane.material;
-    if (Array.isArray(material)) {
-      material.map((m) => {
-        m.opacity = opacity;
-        m.needsUpdate = true;
-      });
-    } else {
-      material.opacity = opacity;
-      material.needsUpdate = true;
-    }
-  }
+  
 
   private resolveHandleGroup = (intersectedObject: THREE.Intersection | undefined) => {
     if (intersectedObject === undefined) {

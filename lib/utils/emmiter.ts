@@ -1,5 +1,5 @@
 import { createNanoEvents } from "nanoevents";
-import { IHandle } from "../controls/handles";
+import { IHandle } from "../RotationControl";
 import { Vector3 } from "three";
 import { EVENTS } from "./events";
 
