@@ -2,7 +2,7 @@ import Controls, { IControlsOptions } from "./Controls";
 import Raycaster  from "./utils/raycaster";
 import { emitter, unbindAll } from "./utils/emmiter";
 import { DEFAULT_HANDLE_GROUP_NAME, ANCHOR_MODE } from "./Controls";
-import { Camera, Mesh, Object3D } from "three";
+import { Camera, Mesh, Object3D, Vector3 } from "three";
 import { EVENTS } from "./utils/events";
 import RotationControl, { RotationGroup } from "./RotationControl";
 
@@ -201,5 +201,27 @@ export default class RotationControlManager extends Object3D {
       [EVENTS.DRAG_STOP]: [],
     };
   };
+
+  public getObjectRotation = () => {
+    const controls = this.controls[Object.keys(this.controls)[0]];
+    if (controls) {
+      return controls.getObjectRotation();
+    }
+    return new Vector3(0, 0, 0);
+  };
+  public setObjectRotation = (rotation: Vector3) => {
+    const controls = this.controls[Object.keys(this.controls)[0]];
+    if (controls) {
+      controls.setObjectRotation(rotation);
+    }
+  };
+
+  public isObjectRotationUpdated = () => {
+    const controls = this.controls[Object.keys(this.controls)[0]];
+    if (controls) {
+      return controls.isObjectRotationUpdated();
+    }
+    return false;
+  }
 }
 

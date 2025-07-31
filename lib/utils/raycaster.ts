@@ -281,7 +281,7 @@ export default class Raycaster extends THREE.Raycaster {
 
     this.currentScreenPoint.set(clientX, clientY);
     const distance = this.currentScreenPoint.distanceTo(this.previousScreenPoint);
-    const dragRatio = distance / (this.clientDiagonalLength || 1);
+    const dragRatio = this.previousScreenPoint.x - clientX;//distance / (this.clientDiagonalLength || 1);
 
     emitter.emit(EVENTS.DRAG, {
       point: this.point,

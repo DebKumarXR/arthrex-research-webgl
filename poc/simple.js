@@ -194,8 +194,11 @@ const spriteMaterial = new THREE.SpriteMaterial( {
 //Hud
 let hudcamera, hudScene;
 let impingementLabel;
+let hudCamFrustumSize; 
+let hudmesh;
 
 // Custom controls
+let controlsManager;
 const gizmoMaterial = new MeshBasicMaterial( {
 	depthTest: false,
 	depthWrite: false,
@@ -259,13 +262,13 @@ async function init() {
 	camera.updateProjectionMatrix();
 
 	// Hud Camera
-	const frustumSize = 5;
+	hudCamFrustumSize = 5;
 	const aspect = window.innerWidth / window.innerHeight;
 	hudcamera = new OrthographicCamera(
-		(frustumSize * aspect) / -2,
-		(frustumSize * aspect) / 2,
-		frustumSize / 2,
-		frustumSize / -2,
+		(hudCamFrustumSize * aspect) / -2,
+		(hudCamFrustumSize * aspect) / 2,
+		hudCamFrustumSize / 2,
+		hudCamFrustumSize / -2,
 		0.1,
 		100
 	);
@@ -359,6 +362,7 @@ async function init() {
 		polygonOffset: true,
 		polygonOffsetUnits: 0.1,
 		polygonOffsetFactor: 0.1,
+		color: params.brush1Color,
 	} ) );
 	resultObject.castShadow = true;
 	resultObject.receiveShadow = true;
@@ -490,12 +494,15 @@ async function init() {
 	const rotFolder = gui.addFolder( 'Rotation' );
 	_controllers.startXCtrl = rotFolder.add( brush2.rotation, 'x', -Math.PI, Math.PI ).name( 'Flexion/Extension' ).onChange( () => {
 		needsUpdate = true;
+		controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
 	} );
 	_controllers.startYCtrl = rotFolder.add( brush2.rotation, 'y', -Math.PI, Math.PI ).name( 'Abduction/Adduction' ).onChange( () => {
 		needsUpdate = true;
+		controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
 	} );
 	_controllers.startZCtrl = rotFolder.add( brush2.rotation, 'z', -Math.PI, Math.PI ).name( 'Internal/External' ).onChange( () => {
 		needsUpdate = true;
+		controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
 	} );
 	rotFolder.open();
 
@@ -529,7 +536,7 @@ async function init() {
 	// HUD Controls
 	const planeGeometry = new BoxGeometry( 2, 1, 0.01 );
 	const material = new MeshBasicMaterial({ color: '#000000'});	
-	const hudmesh = new Mesh(planeGeometry, material);
+	hudmesh = new Mesh(planeGeometry, material);
 	hudmesh.position.x = hudcamera.left + 1;
 	hudmesh.position.y = hudcamera.bottom + 0.5;
 	hudScene.add(hudmesh);
@@ -562,18 +569,22 @@ function changePosition( index ) {
 	if ( index === 0 ) {
 		//stand
 		brush2.rotation.set( 0, 0, 0 );
+		controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
 	}
 	else if ( index === 1 ) {
 		//45° squat
 		brush2.rotation.set( 45 * Math.PI / 180, 5 * Math.PI / 180, 5 * Math.PI / 180 );
+		controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
 	}
 	else if ( index === 2 ) {
 		//90° squat
 		brush2.rotation.set(90 * Math.PI / 180, 10 * Math.PI / 180, 10 * Math.PI / 180 );
+		controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
 	}
 	else if ( index === 3 ) {
 		//120° squat
 		brush2.rotation.set( 120 * Math.PI / 180, 15 * Math.PI / 180, 15 * Math.PI / 180 );
+		controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
 	}
 	Object.keys(_controllers).forEach((key) => _controllers[key].updateDisplay());
 	needsUpdate = true;	
@@ -701,6 +712,7 @@ function resetScene() {
 	controls.reset();
 	
 
+	controlsManager.setObjectRotation( new THREE.Vector3( 0, 0, 0 ) );
 	// reset brushes positions and rotations
 	brush1.rotation.set( 0, 0, 0 );
 	brush1.position.set( 0, 0, 0 );
@@ -722,6 +734,23 @@ function render() {
 	//log camera position
 	//console.log( 'camera position:', camera.position );
 
+	//console.log( 'brush2 rotation:', brush2.rotation );
+
+	if ( controlsManager !== undefined ) {
+		if ( controlsManager.isObjectRotationUpdated() ) {
+
+			const rot = controlsManager.getObjectRotation();
+			brush2.rotation.set( rot.x, rot.y, rot.z );
+			console.log( 'brush2 rotation updated:', brush2.rotation );
+			brush2.updateMatrixWorld();
+			needsUpdate = true;			
+		}
+		// else
+		// {
+		// 	controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
+		// }
+	}
+
 	const enableDebugTelemetry = params.enableDebugTelemetry;
 	if ( needsUpdate ) {
 
@@ -729,6 +758,8 @@ function render() {
 
 		brush1.updateMatrixWorld();
 		brush2.updateMatrixWorld();
+
+		//controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
 
 		const startTime = window.performance.now();
 		csgEvaluator.debug.enabled = enableDebugTelemetry;
@@ -759,6 +790,7 @@ function render() {
 
 		}
 	}
+	
 
 	// decal update for impingement, we are going to update only when bone is not moving
 	if(params.visMode === 'impingement') 
@@ -1165,13 +1197,13 @@ function onWindowResize() {
 
 	const aspect = window.innerWidth / window.innerHeight;
 
-	hudcamera.left = (-frustumSize * aspect) / 2;
-	hudcamera.right = (frustumSize * aspect) / 2;
-	hudcamera.top = frustumSize / 2;
-	hudcamera.bottom = -frustumSize / 2;
+	hudcamera.left = (-hudCamFrustumSize * aspect) / 2;
+	hudcamera.right = (hudCamFrustumSize * aspect) / 2;
+	hudcamera.top = hudCamFrustumSize / 2;
+	hudcamera.bottom = -hudCamFrustumSize / 2;
 
-	hudmesh.position.x = hudcamera.left + 0.5;
-	hudmesh.position.y = hudcamera.top - 0.5;
+	hudmesh.position.x = hudcamera.left + 1;
+	hudmesh.position.y = hudcamera.bottom + 0.5;
 
 	hudcamera.updateProjectionMatrix();
 
@@ -1179,8 +1211,7 @@ function onWindowResize() {
 function animate() {
 
 	renderer.autoClear = false;
-	updateTransformControls(xLine);
-
+	//updateTransformControls(xLine);
 
 	renderer.render( scene, camera );		
 	renderer.render( hudScene, hudcamera );
@@ -1214,11 +1245,11 @@ function initTransformControls() {
 	box.position.copy( brush2.position );
 
 
-	const controlsManager = new RotationControlManager(camera, renderer.domElement);
+	controlsManager = new RotationControlManager(camera, renderer.domElement);
 	scene.add(controlsManager);
 
 	// anchor controls to the box
-	const controls2 = controlsManager.anchor(box);
+	const controls2 = controlsManager.anchor(brush2);
 	
 	// disable orbit controls while the freeform-controls are in use
 	controlsManager.listen(EVENTS.DRAG_START, () => {

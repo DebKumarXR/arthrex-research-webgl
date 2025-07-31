@@ -47,6 +47,9 @@ export abstract class HandleGroup extends Group {
    * @param color - hex code for the color
    */
   public abstract setColor(color: string): void;
+
+  public abstract updateHandleRotation(dragRatio: number): void;
+  public abstract resetHandlebarPosition(): void;
 }
 
 export abstract class RotationGroup extends HandleGroup {
@@ -90,9 +93,25 @@ export default class RotationControl extends RotationGroup {
   //private readonly ring: CLine;
   private readonly ring: Mesh;
   private readonly handlebar: Octahedron;
+  private ringRadius: number;
+  private minAngle: number;
+  private maxAngle: number;
+  private midAngle: number;
+  private currentAngle: number;
+  private reverseAxis: boolean; // Flag to reverse the rotation direction
 
-  constructor(color = DEFAULT_COLOR_RING, ringRadius = DEFAULT_RING_RADIUS, startAngle = Math.PI / 2, endAngle = Math.PI) {
+  public camera: Camera | null = null;
+  private controlsWorldOrientation = new Quaternion();
+  private _temp1 = new Vector3();
+  private _temp2 = new Vector3();
+  private _temp3 = new Quaternion();
+  private worldPosition = new Vector3();
+
+  constructor(color = DEFAULT_COLOR_RING, ringRadius = DEFAULT_RING_RADIUS, startAngle = Math.PI / 2, endAngle = Math.PI, reverseAxis = false) {
     super();
+    this.ringRadius = ringRadius;
+    this.reverseAxis = reverseAxis;
+
     // const ringNumberOfPoints = DEFAULT_RING_NUM_POINTS;
     // const ringGeometry = new BufferGeometry();
     // const segments = ringNumberOfPoints;
@@ -113,14 +132,14 @@ export default class RotationControl extends RotationGroup {
 
     const pivotPoint = this.position; // Your central point
     const radius = ringRadius; // Distance from the pivot
-    const angle = startAngle + (endAngle - startAngle) / 2;//Math.PI / 4; // Angle in radians (e.g., 45 degrees)
+    
+    this.maxAngle = startAngle + (endAngle - startAngle) / 2; // Ending angle in radians
+    this.midAngle = endAngle; // Mid angle in radians
+    this.minAngle = this.midAngle - (this.maxAngle - this.midAngle); // Starting angle in radians
+    console.log("Min Angle:", this.minAngle, "Max Angle:", this.maxAngle, "Mid Angle:", this.midAngle);
 
-    const x = pivotPoint.x + radius * Math.cos(endAngle);
-    const y = pivotPoint.y + radius * Math.sin(endAngle);
-    // If you are using the XY plane, use 'y' instead of 'z' for the second coordinate
-    // const y = pivotPoint.y + radius * Math.sin(angle);
-
-    this.handlebar.position.set(x, y, pivotPoint.z);    
+    this.currentAngle = this.midAngle; // Current angle in radians
+    this.updateHandlebarPosition(this.midAngle);
     this.add(this.handlebar);
 
 
@@ -135,12 +154,12 @@ export default class RotationControl extends RotationGroup {
     //  opacity: 0.5,
 		} );	
    
-    const geometry = new TorusGeometry(ringRadius, 0.05, 3, 64, Math.PI * 0.4);
+    const geometry = new TorusGeometry(ringRadius, 0.08, 3, 64, Math.PI * 0.4);
     this.ring = new Mesh(geometry, matRed);
     this.add(this.ring);
 
-    //rotate the ring 45 degrees around the z-axis
-    this.ring.rotation.set(0, 0, angle);
+    //rotate the ring 45 degrees around the z-axis   
+    this.ring.rotation.set(0, 0, this.maxAngle);
   }
 
   /**
@@ -157,6 +176,44 @@ export default class RotationControl extends RotationGroup {
     handlebarMaterial.color.set(color);
   };  
 
+ 
+  // update handle rotation in drag, update 2 times in a second
+  public updateHandleRotation = (dragRatio: number) => {
+
+    const distance = dragRatio;//point1.distanceTo(point2);
+    if(distance !== 0) {
+     // console.log("Distance:", distance);
+
+      const degrees = (distance * 0.005); 
+      if (this.reverseAxis) {
+        this.currentAngle -= degrees; // Reverse the angle based on distance
+      } else {
+        this.currentAngle += degrees; // Adjust the angle based on distance
+      }
+
+      // Clamp the angle to the min and max range
+      this.currentAngle = Math.max(this.maxAngle, Math.min(this.currentAngle, this.minAngle));
+     // console.log("Angle:", this.currentAngle);
+      this.updateHandlebarPosition(this.currentAngle);
+    }   
+  };
+
+  // method to update handlebar position based on the angle of the ring
+  public updateHandlebarPosition = (ringAngle: number) => {
+    //this.currentAngle = ringAngle; // Update the current angle
+    const pivotPoint = this.position; // The center point of the ring
+    const ringRadius = this.ringRadius; // Radius of the ring
+
+    const x = pivotPoint.x + ringRadius * Math.cos(ringAngle);
+    const y = pivotPoint.y + ringRadius * Math.sin(ringAngle);
+    this.handlebar.position.set(x, y, pivotPoint.z);    
+  };
+
+  public resetHandlebarPosition = () => {
+    this.currentAngle = this.midAngle; // Reset to mid angle
+    this.updateHandlebarPosition(this.midAngle); // Update handlebar position
+  };
+
   // public method for look at camera
   public lookAtCamera = (camera: Camera) => {
     const direction = new Vector3();
@@ -165,12 +222,7 @@ export default class RotationControl extends RotationGroup {
     this.handlebar.lookAt(direction);
   };
 
-  public camera: Camera | null = null;
-    private controlsWorldOrientation = new Quaternion();
-    private _temp1 = new Vector3();
-    private _temp2 = new Vector3();
-    private _temp3 = new Quaternion();
-    private worldPosition = new Vector3();
+
  
   updateMatrixWorld(force?: boolean): void {
     if (this.camera !== null) {

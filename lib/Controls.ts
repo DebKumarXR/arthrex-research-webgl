@@ -378,7 +378,10 @@ export default class Controls extends Group {
     z: boolean;
   };
 
-  /**
+  public anchorRotation: Vector3;
+  public anchorRotationUpdated: boolean;
+
+   /**
    *
    * @param object - the object provided by the user
    * @param camera - the THREE.Camera instance used in the scene
@@ -416,11 +419,9 @@ export default class Controls extends Group {
 
     this.computeObjectBounds();
 
-    
-
-    this.rotationX = new RotationControl("red", this.boundingSphereRadius * this.rotationRadiusScale, Math.PI * 0, Math.PI * 0.4);
-    this.rotationY = new RotationControl("green", this.boundingSphereRadius * this.rotationRadiusScale, Math.PI * 0.7, Math.PI * 1.1);
-    this.rotationZ = new RotationControl("blue", this.boundingSphereRadius * this.rotationRadiusScale, Math.PI * 1.4, Math.PI * 1.8);
+    this.rotationX = new RotationControl("red", this.boundingSphereRadius * this.rotationRadiusScale, Math.PI * 0, Math.PI * 0.4, false);
+    this.rotationY = new RotationControl("green", this.boundingSphereRadius * this.rotationRadiusScale, Math.PI * 0.7, Math.PI * 1.1, true);
+    this.rotationZ = new RotationControl("blue", this.boundingSphereRadius * this.rotationRadiusScale, Math.PI * 1.4, Math.PI * 1.8, true);
 
     this.rotationX.camera = this.camera;
     this.rotationY.camera = this.camera;
@@ -431,6 +432,9 @@ export default class Controls extends Group {
     //this.setupDefaultEyeRotation();
    // this.setupDefaultPickPlane();
     //this.setupDefaultPick();
+
+    this.anchorRotation = new Vector3(0, 0, 0);
+    this.anchorRotationUpdated = false;
   }
 
   private setupDefaultPickPlane = () => {
@@ -442,6 +446,18 @@ export default class Controls extends Group {
     this.add(handle);
   };
 
+  public isObjectRotationUpdated = () => {
+    return this.anchorRotationUpdated;
+  };
+
+  public getObjectRotation = () => {
+    this.anchorRotationUpdated = false;
+    return this.anchorRotation;
+  };
+
+  public setObjectRotation = (rotation: Vector3) => {
+    this.anchorRotation.copy(rotation);
+  };
 
 
   private setupDefaultRotation = () => {
@@ -521,6 +537,7 @@ export default class Controls extends Group {
     this.isBeingDraggedTranslation = false;
     this.isBeingDraggedRotation = false;
 
+    handle.resetHandlebarPosition();
     console.log("Drag ended:", { handle });
   };
 
@@ -538,6 +555,7 @@ export default class Controls extends Group {
     const { point, handle, dragRatio = 1 } = args;
     const k = Math.exp(-this.dampingFactor * Math.abs(dragRatio ** 3));
 
+    if(this.isBeingDraggedRotation)
     {
       this.touch1.copy(this.dragIncrementalStartPoint).sub(this.objectWorldPosition).normalize();
 
@@ -547,32 +565,27 @@ export default class Controls extends Group {
       if (this.mode === ANCHOR_MODE.FIXED) {
         this.detachHandleUpdateQuaternionAttach(handle, this.handleTargetQuaternion);
       }
+      handle.updateHandleRotation(dragRatio);
+      if(handle.name === DEFAULT_HANDLE_GROUP_NAME.XR) {
+       this.anchorRotation.x += dragRatio * 0.01;
+       this.anchorRotationUpdated = true;
+      }
+      else if(handle.name === DEFAULT_HANDLE_GROUP_NAME.YR) {
+       this.anchorRotation.y += dragRatio * 0.01;
+       this.anchorRotationUpdated = true;
+      }
+      if(handle.name === DEFAULT_HANDLE_GROUP_NAME.ZR) {
+       this.anchorRotation.z += dragRatio * 0.01;
+       this.anchorRotationUpdated = true;
+      }
     }
 
     this.objectTargetQuaternion.premultiply(this.handleTargetQuaternion);
     this.dragIncrementalStartPoint.copy(point);
+    //console.log("Drag in progress:", { point, handle });
   };
 
-  private getLimitedTranslation = (translation: Vector3) => {
-    const position = translation.add(this.position);
-    if (!this.translationAnchor || !this.translationLimit) {
-      return position;
-    }
-    const { x: xLimit, y: yLimit, z: zLimit } = this.translationLimit;
-    const { x: xAnchor, y: yAnchor, z: zAnchor } = this.translationAnchor;
-    const { x, y, z } = position;
-    this.minTranslationCache.set(
-      xLimit ? xAnchor + xLimit[0] : x,
-      yLimit ? yAnchor + yLimit[0] : y,
-      zLimit ? zAnchor + zLimit[0] : z
-    );
-    this.maxTranslationCache.set(
-      xLimit ? xAnchor + xLimit[1] : x,
-      yLimit ? yAnchor + yLimit[1] : y,
-      zLimit ? zAnchor + zLimit[1] : z
-    );
-    return position.clamp(this.minTranslationCache, this.maxTranslationCache);
-  };
+ 
 
   private detachObjectUpdatePositionAttach = (parent: Object3D | null, object: Object3D) => {
     if (parent !== null && this.parent !== null && this.parent.parent !== null) {
