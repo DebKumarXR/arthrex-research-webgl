@@ -141,7 +141,7 @@ const _controllers = {
 // decals
 let decalMesh;
 let raycaster;
-// let line;
+
 
 const intersection = {
 	intersects: false,
@@ -206,12 +206,31 @@ const gizmoMaterial = new MeshBasicMaterial( {
 	toneMapped: false,
 	transparent: true
 } );	
-let xLine;
-let yLine;
-let zLine;
+
+// Render target hip
+let renderTarget;
+let rtScene, rtCamera, rtMesh, rtMeshSize;
+let rtUpdateState = 0;
+let rtUpdateStateTime;
+
+// Render target femur
+let femurRenderTarget;
+let femurRtScene, femurRtCamera, femurRtMesh, femurRtMeshSize;
+let femurRtUpdateState = 0;
+let femurRtUpdateStateTime;
+
+// View reset
+let camOldPosition = new THREE.Vector3();
+let camOldRotation = new THREE.Quaternion();
+let oldVisMode = 'normal';
+let sceneBgColor = new THREE.Color( '#151515' );
+let lightOldPosition = new THREE.Vector3();
+let tempBoxMesh;
+let tempBoxMesh2;
 
 
 
+//----- Initialize the scene and start rendering
 init();
 
 async function init() {
@@ -236,11 +255,12 @@ async function init() {
 	
 	// scene setup
 	scene = new Scene();
-	scene.background = new THREE.Color( '#151515' );
+	scene.background = sceneBgColor;
 
 	// lights
+	lightOldPosition = new THREE.Vector3( -20, 2, 3 );
 	light = new DirectionalLight( 0xffffff, 2.5 );
-	light.position.set( -20, 2, 3 );
+	light.position.set( lightOldPosition.x, lightOldPosition.y, lightOldPosition.z );
 	scene.add( light, light.target );
 	scene.add( new AmbientLight( 0xb0bec5, 0.35 ) );
 
@@ -276,6 +296,51 @@ async function init() {
 	hudScene = new Scene();
 	hudcamera.position.z = 5;
 
+	// Render target
+	renderTarget = new THREE.WebGLRenderTarget( 512, 512, {
+		minFilter: THREE.LinearFilter,
+		magFilter: THREE.LinearFilter,
+		format: THREE.RGBAFormat,
+		stencilBuffer: false,
+		depthBuffer: true
+	} );
+	renderTarget.texture.name = 'hipRenderTarget';
+	rtCamera = new OrthographicCamera(
+		(hudCamFrustumSize * aspect) / -2,
+		(hudCamFrustumSize * aspect) / 2,
+		hudCamFrustumSize / 2,
+		hudCamFrustumSize / -2,
+		0.1,
+		100
+	);
+	rtScene = new Scene();
+	rtCamera.position.z = 5;
+	rtUpdateStateTime = Date.now()- 1000; // start with an update
+
+
+	// Render target femur
+	femurRenderTarget = new THREE.WebGLRenderTarget( 512, 512, {
+		minFilter: THREE.LinearFilter,
+		magFilter: THREE.LinearFilter,
+		format: THREE.RGBAFormat,
+		stencilBuffer: false,
+		depthBuffer: true
+	} );
+	femurRenderTarget.texture.name = 'femurRenderTarget';
+	femurRtCamera = new OrthographicCamera(
+		(hudCamFrustumSize * aspect) / -2,
+		(hudCamFrustumSize * aspect) / 2,
+		hudCamFrustumSize / 2,
+		hudCamFrustumSize / -2,
+		0.1,
+		100
+	);
+	femurRtScene = new Scene();
+	femurRtCamera.position.z = 5;
+    femurRtUpdateStateTime = Date.now()- 1000; // start with an update
+
+
+
 	// controls
 	controls = new OrbitControls( camera, renderer.domElement );
 
@@ -297,9 +362,7 @@ async function init() {
 	// initialize brushes
 	brush1 = new Brush( new BoxGeometry(), new GridMaterial() );
 	brush2 = new Brush( new BoxGeometry(), new GridMaterial() );
-	//brush2.position.set( - 0.75, 0.75, 0 );
-	//brush2.scale.setScalar( 0.5 );
-	//brush1.scale.setScalar( 0.5 );
+
 
 	updateBrush( brush1, params.brush1Shape, params.brush1Complexity );
 	updateBrush( brush2, params.brush2Shape, params.brush2Complexity );
@@ -415,41 +478,6 @@ async function init() {
 	// create custom control
 	initTransformControls();
 
-
-	// // freeform transform controls
-	// const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshNormalMaterial());
-	// scene.add(box);
-	// box.position.set(-6, 0, 0);
-
-	// const controlsManager = new FreeformControls.ControlsManager(camera, renderer.domElement);
-	// scene.add(controlsManager);
-
-	// // anchor controls to the box
-	// const controls2 = controlsManager.anchor(box);
-	// controls2.showAll(false);
-	// controls2.showByNames(
-	// [
-	// 	//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YPT,
-	// 	//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YNT,
-	// 	FreeformControls.DEFAULT_HANDLE_GROUP_NAME.YR,
-	// 	FreeformControls.DEFAULT_HANDLE_GROUP_NAME.XR,
-	// 	FreeformControls.DEFAULT_HANDLE_GROUP_NAME.ZR,
-	// 	FreeformControls.DEFAULT_HANDLE_GROUP_NAME.ER,
-	// 	//FreeformControls.DEFAULT_HANDLE_GROUP_NAME.PICK_PLANE_ZX,
-	// ],
-	// true
-	// );
-
-	// // disable orbit controls while the freeform-controls are in use
-	// controlsManager.listen(FreeformControls.EVENTS.DRAG_START, () => {
-	// 	controls.enabled = false;
-	// });
-	// controlsManager.listen(FreeformControls.EVENTS.DRAG_STOP, () => {
-	// 	controls.enabled = true;
-	// });
-
-	
-
 	// gui
 	gui = new GUI();
 
@@ -510,11 +538,13 @@ async function init() {
 	const visModeFolder = gui.addFolder( 'Impingement' );	
 
 	//add a button for collision/visual mode
-	visModeFolder.add(params, 'visMode', ['transparent', 'intersection', 'normal']).name('Mode').onChange( (v) => {
+	visModeFolder.add(params, 'visMode', ['normal','transparent', 'intersection', 'intersection_reverse' ]).name('Mode').onChange( (v) => {
 		updateVisualMode( v );
+		oldVisMode = v;
 	});
 
 	updateVisualMode( 'normal' );
+	oldVisMode = 'normal';
 
 	visModeFolder.add( params, 'gridTexture' ).onChange( v => {
 
@@ -549,7 +579,45 @@ async function init() {
 	// init decals
 	initDecal();
 
+	// init render target	
+	rtMeshSize = new THREE.Vector2( 2, 1.3 );
+	const renderTargetGeometry = new BoxGeometry( rtMeshSize.x, rtMeshSize.y, 0.01 );
+	const renderTargetMaterial = new MeshBasicMaterial( {
+		map: renderTarget.texture
+	} );	
+	
+	rtMesh = new Mesh( renderTargetGeometry, renderTargetMaterial );
+	rtMesh.position.set( rtCamera.left + rtMeshSize.x/2, rtCamera.bottom + rtMeshSize.y/2, 0.01 );
+	rtScene.add( rtMesh );
 
+	// init femur render target
+	femurRtMeshSize = new THREE.Vector2( 2, 1.3 );
+	const femurRenderTargetGeometry = new BoxGeometry( femurRtMeshSize.x, femurRtMeshSize.y, 0.01 );
+	const femurRenderTargetMaterial = new MeshBasicMaterial( {
+		map: femurRenderTarget.texture
+	} );
+	//const femurRenderTargetMaterial = new MeshBasicMaterial({ color: '#cc0d0d'});	
+
+	femurRtMesh = new Mesh( femurRenderTargetGeometry, femurRenderTargetMaterial );
+	femurRtMesh.position.set( femurRtCamera.left + femurRtMeshSize.x/2, femurRtCamera.bottom + femurRtMeshSize.y*1.52, 0.01 );
+	femurRtScene.add( femurRtMesh );
+
+
+	//camera adjustment for femur render target
+	const tempBoxGeometry = new BoxGeometry( 1, 1, 1 );
+	const tempBoxMaterial = new MeshBasicMaterial({ color: '#00ff00', transparent: true, opacity: 0.5 });
+	tempBoxMesh = new Mesh( tempBoxGeometry, tempBoxMaterial );	
+	tempBoxMesh.position.set( 6, 2, -2 );
+	tempBoxMesh.lookAt( 0, 0, 0 );
+
+	tempBoxMesh2 = new Mesh( tempBoxGeometry, tempBoxMaterial );
+	tempBoxMesh2.position.set( 0, 0, 0 );
+	tempBoxMesh2.add(tempBoxMesh);
+	scene.add(tempBoxMesh2);
+	tempBoxMesh2.visible = false; // hide the temp box mesh
+
+
+	//update brush mesh
 	if(hipMesh !== undefined) {
 		// update brush1 with hip mesh
 		updateBrush( brush1, 'mesh', params.brush1Complexity, hipMesh );	
@@ -597,6 +665,10 @@ function pelvicTilt(value)
 }
 
 function updateVisualMode( mode ) {
+
+	materialMap.get( brush2.material ).color.set( params.brush2Color );	
+	materialMap.get( brush1.material ).color.set( params.brush1Color );
+
 	if ( mode === 'transparent' ) {
 		params.operation = SUBTRACTION;
 		
@@ -631,51 +703,31 @@ function updateVisualMode( mode ) {
 		removeSprites();
 		impgNeedUpdate = false;
 	}
-	needsUpdate = true;
+	else if ( mode === 'intersection_reverse' ) {
+		params.operation = REVERSE_SUBTRACTION;
+		params.useGroups = true;
+		params.displayBrushes = false;
+		brush1.visible = params.displayBrushes;
+		brush2.visible = params.displayBrushes;
+
+		// update brush1 color to match brush2
+		materialMap.get( brush2.material ).color.set( params.brush1Color );
+		materialMap.get( brush1.material ).color.set( params.brush2Color );
+
+		showHideDecalMesh( false );
+		removeSprites();
+	}
+	needsUpdate = true;	
+	console.log('Visual mode changed:', mode);
 }
 
 function updateBrush( brush, type, complexity, mesh ) {
 	
 	brush.geometry.dispose();
-	switch ( type ) {
-
-		case 'sphere':
-			brush.geometry = new SphereGeometry(
-				1,
-				Math.round( MathUtils.lerp( 5, 32, complexity ) ),
-				Math.round( MathUtils.lerp( 5, 16, complexity ) )
-			);
-			break;
-		case 'box':
-			const dim = Math.round( MathUtils.lerp( 1, 10, complexity ) );
-			brush.geometry = new BoxGeometry( 1, 1, 1, dim, dim, dim );
-			break;
-		case 'cylinder':
-			brush.geometry = new CylinderGeometry(
-				0.5, 0.5, 1,
-				Math.round( MathUtils.lerp( 5, 32, complexity ) ),
-			);
-			break;
-		case 'torus':
-			brush.geometry = new TorusGeometry(
-				0.6,
-				0.2,
-				Math.round( MathUtils.lerp( 4, 16, complexity ) ),
-				Math.round( MathUtils.lerp( 6, 30, complexity ) )
-			);
-			break;
-		case 'torus knot':
-			brush.geometry = new TorusKnotGeometry(
-				0.6,
-				0.2,
-				Math.round( MathUtils.lerp( 16, 64, complexity ) ),
-				Math.round( MathUtils.lerp( 4, 16, complexity ) ),
-			);
-			break;
+	switch ( type ) {	
 		case 'mesh':
 			brush.geometry = mesh.clone();
 			break;
-
 	}
 
 	brush.geometry = brush.geometry.toNonIndexed();
@@ -727,107 +779,8 @@ function resetScene() {
 	removeSprites();
 }
 
-function render() {
 
-	requestAnimationFrame( render );
 
-	//log camera position
-	//console.log( 'camera position:', camera.position );
-
-	//console.log( 'brush2 rotation:', brush2.rotation );
-
-	if ( controlsManager !== undefined ) {
-		if ( controlsManager.isObjectRotationUpdated() ) {
-
-			const rot = controlsManager.getObjectRotation();
-			brush2.rotation.set( rot.x, rot.y, rot.z );
-			console.log( 'brush2 rotation updated:', brush2.rotation );
-			brush2.updateMatrixWorld();
-			needsUpdate = true;			
-		}
-		// else
-		// {
-		// 	controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
-		// }
-	}
-
-	const enableDebugTelemetry = params.enableDebugTelemetry;
-	if ( needsUpdate ) {
-
-		needsUpdate = false;
-
-		brush1.updateMatrixWorld();
-		brush2.updateMatrixWorld();
-
-		//controlsManager.setObjectRotation( new THREE.Vector3( brush2.rotation.x, brush2.rotation.y, brush2.rotation.z ) );
-
-		const startTime = window.performance.now();
-		csgEvaluator.debug.enabled = enableDebugTelemetry;
-		csgEvaluator.useGroups = params.useGroups;		
-		csgEvaluator.evaluate( brush1, brush2, params.operation, resultObject );		
-
-		if ( params.useGroups ) {
-
-			resultObject.material = resultObject.material.map( m => materialMap.get( m ) );
-
-		} else {
-
-			resultObject.material = originalMaterial;
-
-		}
-
-		const deltaTime = window.performance.now() - startTime;
-		outputContainer.innerText = `${ deltaTime.toFixed( 3 ) }ms`;
-
-		if ( enableDebugTelemetry ) {
-
-			edgesHelper.setEdges( csgEvaluator.debug.intersectionEdges );
-
-			trisHelper.setTriangles( [
-				...csgEvaluator.debug.triangleIntersectsA.getTrianglesAsArray(),
-				...csgEvaluator.debug.triangleIntersectsA.getIntersectionsAsArray()
-			] );
-
-		}
-	}
-	
-
-	// decal update for impingement, we are going to update only when bone is not moving
-	if(params.visMode === 'normal') 
-	{
-		const timeNow = Date.now();
-		const rotVector = new THREE.Vector3(0, 0, 0);
-		rotVector.copy( brush2.rotation );
-		if(decalBoneRotation.distanceTo( rotVector ) > 0.001) {
-			lastDecalUpdateTime = timeNow;
-			decalBoneRotation.copy( rotVector );
-			impgNeedUpdate = false;	
-			//removeDecal();
-			removeSprites();
-		}
-		if ( (timeNow - lastDecalUpdateTime) > 1000 && !impgNeedUpdate ) {
-			impgNeedUpdate = true;			
-			//addDecalsOnEdge();
-			addSpritesOnEdge();
-		}
-	}	
-
-	wireframeResult.visible = params.wireframe;
-	brush1.visible = params.displayBrushes;
-	brush2.visible = params.displayBrushes;
-
-	light.castShadow = params.shadows;
-
-	transformControls.enabled = params.displayControls;
-	transformControls.visible = params.displayControls;
-
-	edgesHelper.visible = enableDebugTelemetry && params.displayIntersectionEdges;
-	trisHelper.visible = enableDebugTelemetry && params.displayTriangleIntersections;
-
-	bvhHelper1.visible = params.displayBrush1BVH;
-	bvhHelper2.visible = params.displayBrush2BVH;	
-	
-}
 
 // add sprites on edge mesh
 function addSpritesOnEdge() {
@@ -854,12 +807,8 @@ function addSpritesOnEdge() {
 			const sprite = new THREE.Sprite( material );
 			lastPosition.copy( pos );
 
-			sprite.position.copy( pos );
-			//sprite.position.z -= 0.1; // offset sprite slightly above the edge
-			//sprite.renderOrder = a; // set render order based on index
+			sprite.position.copy( pos );		
 			sprite.scale.set( params.spriteRadius, params.spriteRadius, params.spriteRadius ); // set sprite size
-			//sprite.position.normalize();
-			//sprite.position.multiplyScalar( radius );
 			spriteGroup.add( sprite );	
 		}		
 		
@@ -949,9 +898,6 @@ function initDecal() {
 
 	lastDecalUpdateTime = Date.now();
 
-	//line = new THREE.Line( geometry, new THREE.LineBasicMaterial() );
-	//scene.add( line );
-
 	loadSourceMesh();
 
 	raycaster = new THREE.Raycaster();
@@ -975,76 +921,8 @@ function initDecal() {
 		moved = false;
 
 	} );
-
-	// window.addEventListener( 'pointerup', function ( event ) {
-
-	// 	if ( moved === false ) {
-
-	// 		checkIntersection( event.clientX, event.clientY );
-
-	// 		if ( intersection.intersects ) addDecalAtPosition(intersection.point);
-
-	// 	}
-
-	// } );
-
-	// window.addEventListener( 'pointermove', onPointerMove );
-
-	// function onPointerMove( event ) {
-
-	// 	if ( event.isPrimary ) {
-
-	// 		checkIntersection( event.clientX, event.clientY );
-
-	// 	}
-
-	// }
-
 }
 
-// function checkIntersection( x, y ) {
-
-// 	if ( decalMesh === undefined ) return;
-	
-// 	mouse.x = ( x / window.innerWidth ) * 2 - 1;
-// 	mouse.y = - ( y / window.innerHeight ) * 2 + 1;
-
-// 	raycaster.setFromCamera( mouse, camera );
-// 	raycaster.intersectObject( decalMesh, false, intersects );
-	
-
-// 	if ( intersects.length > 0 ) {
-
-// 		const p = intersects[ 0 ].point;
-// 		mouseHelper.position.copy( p );
-// 		intersection.point.copy( p );
-
-// 		const normalMatrix = new THREE.Matrix3().getNormalMatrix( decalMesh.matrixWorld );
-
-// 		const n = intersects[ 0 ].face.normal.clone();
-// 		n.applyNormalMatrix( normalMatrix );
-// 		n.multiplyScalar( 10 );
-// 		n.add( intersects[ 0 ].point );
-
-// 		intersection.normal.copy( intersects[ 0 ].face.normal );
-// 		mouseHelper.lookAt( n );
-
-// 		// const positions = line.geometry.attributes.position;
-// 		// positions.setXYZ( 0, p.x, p.y, p.z );
-// 		// positions.setXYZ( 1, n.x, n.y, n.z );
-// 		// positions.needsUpdate = true;
-
-// 		intersection.intersects = true;
-
-// 		intersects.length = 0;
-
-// 	} else {
-
-// 		intersection.intersects = false;
-
-// 	}
-
-// }
 function checkIntersectionAtPosition( position ) {
 	if ( decalMesh === undefined ) return;
 
@@ -1073,11 +951,7 @@ function checkIntersectionAtPosition( position ) {
 		intersection.normal.copy( intersects[ 0 ].face.normal );
 		mouseHelper.lookAt( n );
 
-		// const positions = line.geometry.attributes.position;
-		// positions.setXYZ( 0, p.x, p.y, p.z );
-		// positions.setXYZ( 1, n.x, n.y, n.z );
-		// positions.needsUpdate = true;
-
+	
 		intersection.intersects = true;
 
 	} else {
@@ -1207,43 +1081,27 @@ function onWindowResize() {
 
 	hudcamera.updateProjectionMatrix();
 
+	//rt camera
+	rtCamera.left = (-hudCamFrustumSize * aspect) / 2;
+	rtCamera.right = (hudCamFrustumSize * aspect) / 2;
+	rtCamera.top = (hudCamFrustumSize) / 2;
+	rtCamera.bottom = (-hudCamFrustumSize) / 2;
+	rtMesh.position.set( rtCamera.left + rtMeshSize.x/2, rtCamera.bottom + rtMeshSize.y/2, 0.01 );
+	rtCamera.updateProjectionMatrix();
+
+	// femur rt camera
+	femurRtCamera.left = (-hudCamFrustumSize * aspect) / 2
+	femurRtCamera.right = (hudCamFrustumSize * aspect) / 2;
+	femurRtCamera.top = (hudCamFrustumSize) / 2;
+	femurRtCamera.bottom = (-hudCamFrustumSize) / 2;
+	femurRtMesh.position.set( femurRtCamera.left + femurRtMeshSize.x/2, femurRtCamera.bottom + femurRtMeshSize.y*1.52, 0.01 );
+	femurRtCamera.updateProjectionMatrix();
 }
-function animate() {
-
-	renderer.autoClear = false;
-	//updateTransformControls(xLine);
-
-	renderer.render( scene, camera );		
-	renderer.render( hudScene, hudcamera );
-	stats.update();		
-	
-
-	//log camera position
-	//console.log( 'camera position:', camera.position );
-}
 
 
-
-//Reference:
-//https://github.com/mrdoob/three.js/blob/dev/examples/jsm/controls/TransformControls.js#L354
 
 // init transform controls
-function initTransformControls() {
-	//xLine = createArcLine(5, 0.1, 3, 64, Math.PI, 0xff0000);	
-
-	// const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshNormalMaterial());
-	// scene.add(box);
-	// box.position.set(-6, 0, 0);
-	// create a new Controls instance
-	//xLine = new Controls( box, camera, {rotationRadiusScale: 2} );
-	//scene.add(xLine);	
-	
-	
-	// freeform transform controls
-	const box = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), new THREE.MeshNormalMaterial());
-	scene.add(box);
-	box.position.copy( brush2.position );
-
+function initTransformControls() {	
 
 	controlsManager = new RotationControlManager(camera, renderer.domElement);
 	scene.add(controlsManager);
@@ -1261,63 +1119,268 @@ function initTransformControls() {
 
 }
 
-function updateTransformControls(anchor) {
-	
-	// let size = 1;
-	// xLine.rotation.set( 0, 0, 0 );
-	// xLine.position.copy( anchor.position );
-	// let factor = anchor.position.distanceTo( camera.position ) * Math.min( 1.9 * Math.tan( Math.PI * camera.fov / 360 ) / camera.zoom, 7 );
-    // xLine.scale.set( 1, 1, 1 ).multiplyScalar( factor * size / 4 );
-
-	//const cameraWorldPosition = new THREE.Vector3();
-    //camera.getWorldPosition(cameraWorldPosition);
-
-    // Make the object look at the camera's world position
-   // anchor.lookAt(cameraWorldPosition);
-  // anchor.lookAtCamera( camera );
-
-}
-
-// update matrix world for transform controls
-function updateMatrixWorld(force, object)
-{
-	
-}
-
-
 // method to create an arc and add it to the scene
  function createLine(radius, startAngle, endAngle, segments, color, lineWidth) {       
-        // Generate arc points
-        const points = [];
-        for (let i = 0; i <= segments; i++) {
-            const t = i / segments;
-            const angle = startAngle + t * (endAngle - startAngle);
-            points.push(new THREE.Vector3(
-                radius * Math.cos(angle),
-                radius * Math.sin(angle),
-                0
-            ));
-        }
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        const material = new THREE.LineBasicMaterial({ color, linewidth: lineWidth });
-        const arcLine = new THREE.Line(geometry, material);
-		arcLine.lineWidth = lineWidth; // Set line width if supported by renderer
-        scene.add(arcLine);
-   }
+	// Generate arc points
+	const points = [];
+	for (let i = 0; i <= segments; i++) {
+		const t = i / segments;
+		const angle = startAngle + t * (endAngle - startAngle);
+		points.push(new THREE.Vector3(
+			radius * Math.cos(angle),
+			radius * Math.sin(angle),
+			0
+		));
+	}
+	const geometry = new THREE.BufferGeometry().setFromPoints(points);
+	const material = new THREE.LineBasicMaterial({ color, linewidth: lineWidth });
+	const arcLine = new THREE.Line(geometry, material);
+	arcLine.lineWidth = lineWidth; // Set line width if supported by renderer
+	scene.add(arcLine);
+}
 
 
-   // method to create torus geometry and add it to the scene
-	function createArcLine(radius, tube, radialSegments, tubularSegments, arc, color) {	
+// method to create torus geometry and add it to the scene
+function createArcLine(radius, tube, radialSegments, tubularSegments, arc, color) {	
 
-		const matRed = gizmoMaterial.clone();
-		matRed.color.setHex( color );	
+	const matRed = gizmoMaterial.clone();
+	matRed.color.setHex( color );	
 
-		const geometry = new TorusGeometry(radius, tube, radialSegments, tubularSegments, arc);
-		const torus = new Mesh(geometry, matRed);
-		return torus;
+	const geometry = new TorusGeometry(radius, tube, radialSegments, tubularSegments, arc);
+	const torus = new Mesh(geometry, matRed);
+	return torus;
+}
+
+// update Render Target with boolean mesh objects
+function updateRTObjectHip(show = true) {	
+
+	if(show == true) {
+
+		scene.background = new THREE.Color( '#000000' );
+		
+		camOldPosition.copy( camera.position );
+		camOldRotation.copy( camera.quaternion );
+		updateVisualMode( 'intersection' );
+
+		// update camera position and rotation
+		camera.position.set(-5, -2, -1.5);
+		camera.lookAt(0, 0, 0);
+		camera.updateMatrixWorld();
+
+		controlsManager.visible = false; 	
+		femurRtMesh.visible = false;
+	}
+	else {
+		scene.background = sceneBgColor;
+		camera.position.copy( camOldPosition );
+		camera.quaternion.copy( camOldRotation );
+		camera.updateMatrixWorld();
+
+		updateVisualMode( oldVisMode );
+
+		controlsManager.visible = true; 
+		femurRtMesh.visible = true;
+	}
+}
+
+function updateRTObjectFemur(show = true) {
+	if(show == true) {
+
+		scene.background = new THREE.Color( '#000000' );
+	
+		camOldPosition.copy( camera.position );
+		camOldRotation.copy( camera.quaternion );
+		updateVisualMode( 'intersection_reverse' );
+
+		light.position.set( 10, 0, -3);
+		
+		const p = tempBoxMesh.getWorldPosition( new THREE.Vector3() );		
+		camera.position.set(p.x, p.y , p.z ); // Example: 5 units above, 10 units behind the object
+		camera.lookAt(0, 0, 0); // Look at the object's local origin
+		camera.rotation.z = tempBoxMesh.rotation.z + Math.PI/2; // Match the rotation of the object		
+		camera.updateMatrixWorld();
+
+		controlsManager.visible = false; 	
+		rtMesh.visible = false;
+	}
+	else {
+		scene.background = sceneBgColor;
+		
+		camera.position.copy( camOldPosition );
+		camera.quaternion.copy( camOldRotation );
+		light.position.copy( lightOldPosition );
+		camera.updateMatrixWorld();
+
+		updateVisualMode( oldVisMode );
+
+		controlsManager.visible = true; 
+		rtMesh.visible = true;
+	}
+}
+
+function animate() {
+
+	renderer.autoClear = false;
+
+	if(rtUpdateState == 2)
+	{		
+		renderer.setRenderTarget( renderTarget );
+		renderer.render( scene, camera );			
+		rtUpdateState = 3;
+	}
+	else if (femurRtUpdateState == 2)
+	{
+		renderer.setRenderTarget( femurRenderTarget );
+		renderer.render( scene, camera );	
+		femurRtUpdateState = 3;
+	}
+	else
+	{
+		renderer.setRenderTarget( null );
+		renderer.render( scene, camera );
 	}
 
 
+	//renderer.render( hudScene, hudcamera );
+	renderer.render( femurRtScene, femurRtCamera );
+	renderer.render( rtScene, rtCamera );
+	stats.update();		
+	
+
+	//log camera position
+	//console.log( 'camera position:', camera.position );
+}
+
+function render() {
+
+	requestAnimationFrame( render );	
+
+	if ( controlsManager !== undefined ) {
+		if ( controlsManager.isObjectRotationUpdated() ) {
+
+			const rot = controlsManager.getObjectRotation();
+			brush2.rotation.set( rot.x, rot.y, rot.z );
+			console.log( 'brush2 rotation updated:', brush2.rotation );
+			brush2.updateMatrixWorld();
+			needsUpdate = true;			
+		}		
+	}
+
+	//update render target objects
+	const currentTime = Date.now();
+	if (rtUpdateState === 1) {
+		updateRTObjectHip(true);
+		rtUpdateState = 2; // reset state
+		rtUpdateStateTime = currentTime;
+	}
+	else if (rtUpdateState === 3) {		
+		updateRTObjectHip(false);
+		rtUpdateState = 0; // reset state	
+		rtUpdateStateTime = currentTime;	
+	}
+	//femur render target update
+	if (femurRtUpdateState === 1) {
+		updateRTObjectFemur(true);
+		femurRtUpdateState = 2; // reset state
+		femurRtUpdateStateTime = currentTime;
+	}
+	else if (femurRtUpdateState === 3) {
+		updateRTObjectFemur(false);
+		femurRtUpdateState = 0; // reset state
+		femurRtUpdateStateTime = currentTime;
+	}
+	
+
+	const enableDebugTelemetry = params.enableDebugTelemetry;
+	if ( needsUpdate ) {
+
+		needsUpdate = false;		
+
+		brush1.updateMatrixWorld();
+		brush2.updateMatrixWorld();
+		tempBoxMesh2.rotation.copy( brush2.rotation );
+		tempBoxMesh2.updateMatrixWorld();
+
+		const startTime = window.performance.now();
+		csgEvaluator.debug.enabled = enableDebugTelemetry;
+		csgEvaluator.useGroups = params.useGroups;		
+		csgEvaluator.evaluate( brush1, brush2, params.operation, resultObject );		
+
+		if ( params.useGroups ) {
+
+			resultObject.material = resultObject.material.map( m => materialMap.get( m ) );
+
+		} else {
+
+			resultObject.material = originalMaterial;
+
+		}
+
+		const deltaTime = window.performance.now() - startTime;
+		outputContainer.innerText = `${ deltaTime.toFixed( 3 ) }ms`;
+
+		if ( enableDebugTelemetry ) {
+
+			edgesHelper.setEdges( csgEvaluator.debug.intersectionEdges );
+
+			trisHelper.setTriangles( [
+				...csgEvaluator.debug.triangleIntersectsA.getTrianglesAsArray(),
+				...csgEvaluator.debug.triangleIntersectsA.getIntersectionsAsArray()
+			] );
+		}
+
+		if(rtUpdateState == 0 && (currentTime - rtUpdateStateTime > 200))
+		{
+			rtUpdateStateTime = currentTime;
+			rtUpdateState = 1; // 1 = update objects for render target
+		}		
+		else if(femurRtUpdateState == 0 && (currentTime - femurRtUpdateStateTime > 200))
+		{
+			femurRtUpdateStateTime = currentTime;
+			femurRtUpdateState = 1; // 1 = update objects for femur render target
+		}
+	}
+	
+
+	// decal update for impingement, we are going to update only when bone is not moving
+	if(params.visMode === 'normal') 
+	{
+		const timeNow = Date.now();
+		const rotVector = new THREE.Vector3(0, 0, 0);
+		rotVector.copy( brush2.rotation );
+		if(decalBoneRotation.distanceTo( rotVector ) > 0.001) {
+			lastDecalUpdateTime = timeNow;
+			decalBoneRotation.copy( rotVector );
+			impgNeedUpdate = false;	
+			//removeDecal();
+			removeSprites();
+		}
+		if ( (timeNow - lastDecalUpdateTime) > 1000 && !impgNeedUpdate ) {
+			impgNeedUpdate = true;			
+			//addDecalsOnEdge();
+			addSpritesOnEdge();
+		}
+	}	
+
+	wireframeResult.visible = params.wireframe;
+	brush1.visible = params.displayBrushes;
+	brush2.visible = params.displayBrushes;
+
+	light.castShadow = params.shadows;
+
+	transformControls.enabled = params.displayControls;
+	transformControls.visible = params.displayControls;
+
+	edgesHelper.visible = enableDebugTelemetry && params.displayIntersectionEdges;
+	trisHelper.visible = enableDebugTelemetry && params.displayTriangleIntersections;
+
+	bvhHelper1.visible = params.displayBrush1BVH;
+	bvhHelper2.visible = params.displayBrush2BVH;	
+	
+}
+
+//Reference:
+//https://github.com/mrdoob/three.js/blob/dev/examples/jsm/controls/TransformControls.js#L354
 
 //mesh painting brush example
 //https://github.com/manthrax/monkeypaint/tree/main
