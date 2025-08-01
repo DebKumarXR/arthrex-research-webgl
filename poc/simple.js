@@ -85,7 +85,7 @@ const params = {
 	maxScale: 2.0,
 	rotate: true,
 	spriteRadius: 0.4,
-	visMode: 'impingement',
+	visMode: 'normal',
 	reset: function () {
 		resetScene();
 		removeDecal();
@@ -507,14 +507,14 @@ async function init() {
 	rotFolder.open();
 
 
-	const visModeFolder = gui.addFolder( 'Visual' );	
+	const visModeFolder = gui.addFolder( 'Impingement' );	
 
 	//add a button for collision/visual mode
-	visModeFolder.add(params, 'visMode', ['transparent', 'intersection', 'impingement']).name('Mode').onChange( (v) => {
+	visModeFolder.add(params, 'visMode', ['transparent', 'intersection', 'normal']).name('Mode').onChange( (v) => {
 		updateVisualMode( v );
 	});
 
-	updateVisualMode( 'impingement' );
+	updateVisualMode( 'normal' );
 
 	visModeFolder.add( params, 'gridTexture' ).onChange( v => {
 
@@ -618,8 +618,8 @@ function updateVisualMode( mode ) {
 
 		showHideDecalMesh( false );
 		removeSprites();
-	} else if ( mode === 'impingement' ) {		
-		
+	} else if ( mode === 'normal' ) {
+
 		params.operation = ADDITION;
 		params.useGroups = false;
 
@@ -793,7 +793,7 @@ function render() {
 	
 
 	// decal update for impingement, we are going to update only when bone is not moving
-	if(params.visMode === 'impingement') 
+	if(params.visMode === 'normal') 
 	{
 		const timeNow = Date.now();
 		const rotVector = new THREE.Vector3(0, 0, 0);
